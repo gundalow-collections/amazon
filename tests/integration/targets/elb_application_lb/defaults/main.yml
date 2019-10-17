@@ -1,0 +1,2 @@
+alb_name: my-alb-{{ resource_prefix | regex_search('([0-9]+)$') }}
+tg_name: my-tg-{{ resource_prefix | regex_search('([0-9]+)$') }}

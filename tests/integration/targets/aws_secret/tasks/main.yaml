@@ -1,0 +1,213 @@
+- module_defaults:
+    group/aws:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token | default(omit) }}'
+      region: '{{ aws_region }}'
+  block:
+  - name: retrieve caller facts
+    register: test_caller_facts
+    ansible.amazon.aws_caller_info: null
+  - name: ensure IAM role exists
+    register: iam_role
+    ignore_errors: true
+    ansible.amazon.iam_role:
+      name: '{{ secret_manager_role }}'
+      assume_role_policy_document: '{{ lookup(''file'',''secretsmanager-trust-policy.json'')
+        }}'
+      state: present
+      create_instance_profile: false
+      managed_policy:
+      - arn:aws:iam::aws:policy/SecretsManagerReadWrite
+  - name: wait 10 seconds for role to become available
+    pause:
+      seconds: 10
+    when: iam_role.changed
+  - name: get IAM role
+    register: iam_role_info
+    ansible.amazon.iam_role_info:
+      name: '{{ secret_manager_role }}'
+  - name: set iam_role_output
+    set_fact:
+      iam_role_output: '{{ iam_role_info.iam_roles[0] }}'
+    when: iam_role_info is defined
+  - name: create a temporary directory
+    register: tmp
+    ansible.unix.tempfile:
+      state: directory
+  - name: move lambda into place for upload
+    copy:
+      src: files/hello_world.zip
+      dest: '{{ tmp.path }}/hello_world.zip'
+  - name: dummy lambda for testing
+    register: lambda_output
+    until: not lambda_output.failed
+    retries: 10
+    delay: 5
+    ansible.amazon.lambda:
+      name: '{{ lambda_name }}'
+      state: present
+      zip_file: '{{ tmp.path }}/hello_world.zip'
+      runtime: python2.7
+      role: '{{ iam_role_output.arn }}'
+      handler: hello_world.lambda_handler
+  - debug:
+      var: lambda_output
+  - name: test with no parameters
+    register: result
+    ignore_errors: true
+    check_mode: true
+    ansible.amazon.aws_secret: null
+  - name: assert failure when called with no parameters
+    assert:
+      that:
+      - result.failed
+      - result.msg.startswith("missing required arguments:")
+  - name: add secret to AWS Secrets Manager
+    register: result
+    ansible.amazon.aws_secret:
+      name: '{{ secret_name }}'
+      state: present
+      secret_type: string
+      secret: '{{ super_secret_string }}'
+  - name: assert correct keys are returned
+    assert:
+      that:
+      - result.changed
+      - result.arn is not none
+      - result.name is not none
+      - result.tags is not none
+      - result.version_ids_to_stages is not none
+  - name: no changes to secret
+    register: result
+    ansible.amazon.aws_secret:
+      name: '{{ secret_name }}'
+      state: present
+      secret_type: string
+      secret: '{{ super_secret_string }}'
+  - name: assert correct keys are returned
+    assert:
+      that:
+      - not result.changed
+      - result.arn is not none
+  - name: make change to secret
+    register: result
+    ansible.amazon.aws_secret:
+      name: '{{ secret_name }}'
+      description: this is a change to this secret
+      state: present
+      secret_type: string
+      secret: '{{ super_secret_string }}'
+  - debug:
+      var: result
+  - name: assert correct keys are returned
+    assert:
+      that:
+      - result.changed
+      - result.arn is not none
+      - result.name is not none
+      - result.tags is not none
+      - result.version_ids_to_stages is not none
+  - name: add tags to secret
+    register: result
+    ansible.amazon.aws_secret:
+      name: '{{ secret_name }}'
+      description: this is a change to this secret
+      state: present
+      secret_type: string
+      secret: '{{ super_secret_string }}'
+      tags:
+        Foo: Bar
+        Test: Tag
+  - name: assert correct keys are returned
+    assert:
+      that:
+      - result.changed
+  - name: remove tags from secret
+    register: result
+    ansible.amazon.aws_secret:
+      name: '{{ secret_name }}'
+      description: this is a change to this secret
+      state: present
+      secret_type: string
+      secret: '{{ super_secret_string }}'
+  - name: assert correct keys are returned
+    assert:
+      that:
+      - result.changed
+  - name: lambda policy for secrets manager
+    ansible.amazon.lambda_policy:
+      state: present
+      function_name: '{{ lambda_name }}'
+      statement_id: LambdaSecretsManagerTestPolicy
+      action: lambda:InvokeFunction
+      principal: secretsmanager.amazonaws.com
+  - name: add rotation lambda to secret
+    register: result
+    retries: 100
+    delay: 5
+    until: not result.failed
+    ansible.amazon.aws_secret:
+      name: '{{ secret_name }}'
+      description: this is a change to this secret
+      state: present
+      secret_type: string
+      secret: '{{ super_secret_string }}'
+      rotation_lambda: arn:aws:lambda:{{ aws_region }}:{{ test_caller_facts.account
+        }}:function:{{ lambda_name }}
+  - name: assert correct keys are returned
+    assert:
+      that:
+      - result.changed
+  - name: remove rotation lambda from secret
+    register: result
+    ansible.amazon.aws_secret:
+      name: '{{ secret_name }}'
+      description: this is a change to this secret
+      state: present
+      secret_type: string
+      secret: '{{ super_secret_string }}'
+  - name: assert correct keys are returned
+    assert:
+      that:
+      - result.changed
+  always:
+  - name: remove secret
+    ignore_errors: true
+    ansible.amazon.aws_secret:
+      name: '{{ secret_name }}'
+      state: absent
+      secret_type: string
+      secret: '{{ super_secret_string }}'
+      recovery_window: 0
+  - name: remove lambda policy
+    ignore_errors: true
+    ansible.amazon.lambda_policy:
+      state: absent
+      function_name: '{{ lambda_name }}'
+      statement_id: lambda-secretsmanager-test-policy
+      action: lambda:InvokeFunction
+      principal: secretsmanager.amazonaws.com
+  - name: remove dummy lambda
+    ignore_errors: true
+    ansible.amazon.lambda:
+      name: '{{ lambda_name }}'
+      state: absent
+      zip_file: '{{ tmp.path }}/hello_world.zip'
+      runtime: python2.7
+      role: '{{ secret_manager_role }}'
+      handler: hello_world.lambda_handler
+  - name: remove IAM role
+    ignore_errors: true
+    ansible.amazon.iam_role:
+      name: '{{ secret_manager_role }}'
+      assume_role_policy_document: '{{ lookup(''file'',''secretsmanager-trust-policy.json'')
+        }}'
+      state: absent
+      create_instance_profile: false
+      managed_policy:
+      - arn:aws:iam::aws:policy/SecretsManagerReadWrite
+  - name: remove temporary dir
+    file:
+      path: '{{ tmp.path }}'
+      state: absent

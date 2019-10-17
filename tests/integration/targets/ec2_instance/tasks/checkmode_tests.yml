@@ -1,0 +1,211 @@
+- name: set connection information for all tasks
+  set_fact:
+    aws_connection_info:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+  no_log: true
+- block:
+  - name: Make basic instance
+    register: basic_instance
+    ansible.amazon.ec2_instance:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ resource_prefix }}-checkmode-comparison'
+      image_id: '{{ ec2_ami_image[aws_region] }}'
+      security_groups: '{{ sg.group_id }}'
+      instance_type: t2.micro
+      vpc_subnet_id: '{{ testing_subnet_a.subnet.id }}'
+      wait: false
+  - name: Make basic instance(check mode)
+    check_mode: true
+    ansible.amazon.ec2_instance:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ resource_prefix }}-checkmode-comparison-checkmode'
+      image_id: '{{ ec2_ami_image[aws_region] }}'
+      security_groups: '{{ sg.group_id }}'
+      instance_type: t2.micro
+      vpc_subnet_id: '{{ testing_subnet_b.subnet.id }}'
+  - name: fact presented ec2 instance
+    register: presented_instance_fact
+    ansible.amazon.ec2_instance_info:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      filters:
+        tag:Name: '{{ resource_prefix }}-checkmode-comparison'
+  - name: fact checkmode ec2 instance
+    register: checkmode_instance_fact
+    ansible.amazon.ec2_instance_info:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      filters:
+        tag:Name: '{{ resource_prefix }}-checkmode-comparison-checkmode'
+  - name: Confirm whether the check mode is working normally.
+    assert:
+      that:
+      - '{{ presented_instance_fact.instances | length }} > 0'
+      - '{{ checkmode_instance_fact.instances | length }} == 0'
+  - name: Stop instance in check mode.
+    check_mode: true
+    ansible.amazon.ec2_instance:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ resource_prefix }}-checkmode-comparison'
+      state: stopped
+      vpc_subnet_id: '{{ testing_subnet_a.subnet.id }}'
+  - name: fact ec2 instance
+    register: confirm_checkmode_stopinstance_fact
+    ansible.amazon.ec2_instance_info:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      filters:
+        tag:Name: '{{ resource_prefix }}-checkmode-comparison'
+  - name: Verify that it was not stopped.
+    assert:
+      that:
+      - '"{{ confirm_checkmode_stopinstance_fact.instances[0].state.name }}" != "stopped"'
+  - name: Stop instance.
+    register: instance_stop
+    until: not instance_stop.failed
+    retries: 10
+    ansible.amazon.ec2_instance:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ resource_prefix }}-checkmode-comparison'
+      state: stopped
+      vpc_subnet_id: '{{ testing_subnet_a.subnet.id }}'
+  - name: fact stopped ec2 instance
+    register: confirm_stopinstance_fact
+    ansible.amazon.ec2_instance_info:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      filters:
+        tag:Name: '{{ resource_prefix }}-checkmode-comparison'
+  - name: Verify that it was stopped.
+    assert:
+      that:
+      - '"{{ confirm_stopinstance_fact.instances[0].state.name }}" in ["stopped",
+        "stopping"]'
+  - name: Running instance in check mode.
+    check_mode: true
+    ansible.amazon.ec2_instance:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ resource_prefix }}-checkmode-comparison'
+      state: running
+      vpc_subnet_id: '{{ testing_subnet_a.subnet.id }}'
+  - name: fact ec2 instance
+    register: confirm_checkmode_runninginstance_fact
+    ansible.amazon.ec2_instance_info:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      filters:
+        tag:Name: '{{ resource_prefix }}-checkmode-comparison'
+  - name: Verify that it was not running.
+    assert:
+      that:
+      - '"{{ confirm_checkmode_runninginstance_fact.instances[0].state.name }}" !=
+        "running"'
+  - name: Running instance.
+    ansible.amazon.ec2_instance:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ resource_prefix }}-checkmode-comparison'
+      state: running
+      vpc_subnet_id: '{{ testing_subnet_a.subnet.id }}'
+  - name: fact ec2 instance.
+    register: confirm_runninginstance_fact
+    ansible.amazon.ec2_instance_info:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      filters:
+        tag:Name: '{{ resource_prefix }}-checkmode-comparison'
+  - name: Verify that it was running.
+    assert:
+      that:
+      - '"{{ confirm_runninginstance_fact.instances[0].state.name }}" == "running"'
+  - name: Terminate instance in check mode.
+    check_mode: true
+    ansible.amazon.ec2_instance:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ resource_prefix }}-checkmode-comparison'
+      state: absent
+      vpc_subnet_id: '{{ testing_subnet_a.subnet.id }}'
+  - name: fact ec2 instance
+    register: confirm_checkmode_terminatedinstance_fact
+    ansible.amazon.ec2_instance_info:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      filters:
+        tag:Name: '{{ resource_prefix }}-checkmode-comparison'
+  - name: Verify that it was not terminated,
+    assert:
+      that:
+      - '"{{ confirm_checkmode_terminatedinstance_fact.instances[0].state.name }}"
+        != "terminated"'
+  - name: Terminate instance.
+    ansible.amazon.ec2_instance:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ resource_prefix }}-checkmode-comparison'
+      state: absent
+      vpc_subnet_id: '{{ testing_subnet_a.subnet.id }}'
+  - name: fact ec2 instance
+    register: confirm_terminatedinstance_fact
+    ansible.amazon.ec2_instance_info:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      filters:
+        tag:Name: '{{ resource_prefix }}-checkmode-comparison'
+  - name: Verify that it was terminated,
+    assert:
+      that:
+      - '"{{ confirm_terminatedinstance_fact.instances[0].state.name }}" == "terminated"'
+  always:
+  - name: Terminate instance
+    register: removed
+    until: removed is not failed
+    ignore_errors: true
+    retries: 10
+    ansible.amazon.ec2:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      instance_ids: '{{ basic_instance.instance_ids }}'
+      state: absent

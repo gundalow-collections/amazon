@@ -1,0 +1,71 @@
+- module_defaults:
+    group/aws:
+      region: '{{ aws_region }}'
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token | default(omit) }}'
+  block:
+  - name: Create the identity provider
+    register: create_result
+    ansible.amazon.iam_saml_federation:
+      name: '{{ resource_prefix }}-saml'
+      state: present
+      saml_metadata_document: '{{ lookup("file", "example1.xml") }}'
+  - name: assert idp created
+    assert:
+      that:
+      - create_result is changed
+  - name: Test that nothing changes when we retry
+    register: create_result
+    ansible.amazon.iam_saml_federation:
+      name: '{{ resource_prefix }}-saml'
+      state: present
+      saml_metadata_document: '{{ lookup("file", "example1.xml") }}'
+  - name: assert the idp doesn't change when we retry
+    assert:
+      that:
+      - create_result is not changed
+  - name: Change the identity provider
+    register: change_result
+    ansible.amazon.iam_saml_federation:
+      name: '{{ resource_prefix }}-saml'
+      state: present
+      saml_metadata_document: '{{ lookup("file", "example2.xml") }}'
+  - name: assert idp created
+    assert:
+      that:
+      - change_result is changed
+  - name: Test that nothing changes when we retry
+    register: change_result
+    ansible.amazon.iam_saml_federation:
+      name: '{{ resource_prefix }}-saml'
+      state: present
+      saml_metadata_document: '{{ lookup("file", "example2.xml") }}'
+  - name: assert the idp doesn't change when we retry
+    assert:
+      that:
+      - change_result is not changed
+  - name: Delete the identity provider
+    register: destroy_result
+    ansible.amazon.iam_saml_federation:
+      name: '{{ resource_prefix }}-saml'
+      state: absent
+  - name: assert deleted
+    assert:
+      that:
+      - destroy_result is changed
+  - name: Attempt to re-delete the identity provider
+    register: destroy_result
+    ansible.amazon.iam_saml_federation:
+      name: '{{ resource_prefix }}-saml'
+      state: absent
+  - name: assert deleted
+    assert:
+      that:
+      - destroy_result is not changed
+  always:
+  - name: finish off by deleting the identity provider
+    register: destroy_result
+    ansible.amazon.iam_saml_federation:
+      name: '{{ resource_prefix }}-saml'
+      state: absent

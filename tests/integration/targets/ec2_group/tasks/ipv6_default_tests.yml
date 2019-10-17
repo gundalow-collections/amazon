@@ -1,0 +1,106 @@
+- name: set up aws connection info
+  set_fact:
+    aws_connection_info:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+  no_log: true
+- name: test state=present for ipv6 (expected changed=true) (CHECK MODE)
+  check_mode: true
+  register: result
+  ansible.amazon.ec2_group:
+    aws_access_key: '{{ aws_access_key }}'
+    aws_secret_key: '{{ aws_secret_key }}'
+    security_token: '{{ security_token }}'
+    region: '{{ aws_region }}'
+    name: '{{ec2_group_name}}'
+    description: '{{ec2_group_description}}'
+    state: present
+    rules:
+    - proto: tcp
+      from_port: 8182
+      to_port: 8182
+      cidr_ipv6: 64:ff9b::/96
+- name: assert state=present (expected changed=true)
+  assert:
+    that:
+    - result.changed
+- name: test state=present for ipv6 (expected changed=true)
+  register: result
+  ansible.amazon.ec2_group:
+    aws_access_key: '{{ aws_access_key }}'
+    aws_secret_key: '{{ aws_secret_key }}'
+    security_token: '{{ security_token }}'
+    region: '{{ aws_region }}'
+    name: '{{ec2_group_name}}'
+    description: '{{ec2_group_description}}'
+    state: present
+    rules:
+    - proto: tcp
+      from_port: 8182
+      to_port: 8182
+      cidr_ipv6: 64:ff9b::/96
+- name: assert state=present (expected changed=true)
+  assert:
+    that:
+    - result.changed
+    - result.group_id.startswith("sg-")
+- name: test rules_egress state=present for ipv6 (expected changed=true) (CHECK MODE)
+  check_mode: true
+  register: result
+  ansible.amazon.ec2_group:
+    aws_access_key: '{{ aws_access_key }}'
+    aws_secret_key: '{{ aws_secret_key }}'
+    security_token: '{{ security_token }}'
+    region: '{{ aws_region }}'
+    name: '{{ec2_group_name}}'
+    description: '{{ec2_group_description}}'
+    state: present
+    rules:
+    - proto: tcp
+      from_port: 8182
+      to_port: 8182
+      cidr_ipv6: 64:ff9b::/96
+    rules_egress:
+    - proto: tcp
+      from_port: 8181
+      to_port: 8181
+      cidr_ipv6: 64:ff9b::/96
+- name: assert state=present (expected changed=true)
+  assert:
+    that:
+    - result.changed
+- name: test rules_egress state=present for ipv6 (expected changed=true)
+  register: result
+  ansible.amazon.ec2_group:
+    aws_access_key: '{{ aws_access_key }}'
+    aws_secret_key: '{{ aws_secret_key }}'
+    security_token: '{{ security_token }}'
+    region: '{{ aws_region }}'
+    name: '{{ec2_group_name}}'
+    description: '{{ec2_group_description}}'
+    state: present
+    rules:
+    - proto: tcp
+      from_port: 8182
+      to_port: 8182
+      cidr_ipv6: 64:ff9b::/96
+    rules_egress:
+    - proto: tcp
+      from_port: 8181
+      to_port: 8181
+      cidr_ipv6: 64:ff9b::/96
+- name: assert state=present (expected changed=true)
+  assert:
+    that:
+    - result.changed
+    - result.group_id.startswith("sg-")
+- name: delete it
+  ansible.amazon.ec2_group:
+    aws_access_key: '{{ aws_access_key }}'
+    aws_secret_key: '{{ aws_secret_key }}'
+    security_token: '{{ security_token }}'
+    region: '{{ aws_region }}'
+    name: '{{ec2_group_name}}'
+    state: absent

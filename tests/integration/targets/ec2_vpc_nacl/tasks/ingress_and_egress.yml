@@ -1,0 +1,224 @@
+- name: create ingress and egress rules using subnet IDs
+  register: nacl
+  ansible.amazon.ec2_vpc_nacl:
+    vpc_id: '{{ vpc_id }}'
+    name: '{{ resource_prefix }}-acl'
+    subnets: '{{ subnet_ids }}'
+    tags:
+      Created_by: Ansible test {{ resource_prefix }}
+    ingress:
+    - - 100
+      - tcp
+      - allow
+      - 0.0.0.0/0
+      - null
+      - null
+      - 22
+      - 22
+    - - 200
+      - tcp
+      - allow
+      - 0.0.0.0/0
+      - null
+      - null
+      - 80
+      - 80
+    - - 300
+      - icmp
+      - allow
+      - 0.0.0.0/0
+      - 0
+      - 8
+    egress:
+    - - 100
+      - all
+      - allow
+      - 0.0.0.0/0
+      - null
+      - null
+      - null
+      - null
+    state: present
+- name: assert the network acl was created
+  assert:
+    that:
+    - nacl.changed
+    - nacl.nacl_id.startswith('acl-')
+- name: get network ACL facts
+  register: nacl_facts
+  ansible.amazon.ec2_vpc_nacl_info:
+    nacl_ids:
+    - '{{ nacl.nacl_id }}'
+- name: assert the nacl has the correct attributes
+  assert:
+    that:
+    - nacl_facts.nacls | length == 1
+    - nacl_facts.nacls[0].ingress | length == 3
+    - nacl_facts.nacls[0].egress | length == 1
+- name: remove an ingress rule
+  register: nacl
+  ansible.amazon.ec2_vpc_nacl:
+    vpc_id: '{{ vpc_id }}'
+    name: '{{ resource_prefix }}-acl'
+    subnets: '{{ subnet_ids }}'
+    tags:
+      Created_by: Ansible test {{ resource_prefix }}
+    ingress:
+    - - 100
+      - tcp
+      - allow
+      - 0.0.0.0/0
+      - null
+      - null
+      - 22
+      - 22
+    - - 200
+      - tcp
+      - allow
+      - 0.0.0.0/0
+      - null
+      - null
+      - 80
+      - 80
+    egress:
+    - - 100
+      - all
+      - allow
+      - 0.0.0.0/0
+      - null
+      - null
+      - null
+      - null
+    state: present
+- name: assert the network acl changed
+  assert:
+    that:
+    - nacl.changed
+    - nacl.nacl_id.startswith('acl-')
+- name: get network ACL facts
+  register: nacl_facts
+  ansible.amazon.ec2_vpc_nacl_info:
+    nacl_ids:
+    - '{{ nacl.nacl_id }}'
+- name: assert the nacl has the correct attributes
+  assert:
+    that:
+    - nacl_facts.nacls | length == 1
+    - nacl_facts.nacls[0].ingress | length == 2
+    - nacl_facts.nacls[0].egress | length == 1
+- name: remove the egress rule
+  register: nacl
+  ansible.amazon.ec2_vpc_nacl:
+    vpc_id: '{{ vpc_id }}'
+    name: '{{ resource_prefix }}-acl'
+    subnets: '{{ subnet_ids }}'
+    tags:
+      Created_by: Ansible test {{ resource_prefix }}
+    ingress:
+    - - 100
+      - tcp
+      - allow
+      - 0.0.0.0/0
+      - null
+      - null
+      - 22
+      - 22
+    - - 200
+      - tcp
+      - allow
+      - 0.0.0.0/0
+      - null
+      - null
+      - 80
+      - 80
+    egress: []
+    state: present
+- name: assert the network acl changed
+  assert:
+    that:
+    - nacl.changed
+    - nacl.nacl_id.startswith('acl-')
+- name: get network ACL facts
+  register: nacl_facts
+  ansible.amazon.ec2_vpc_nacl_info:
+    nacl_ids:
+    - '{{ nacl.nacl_id }}'
+- name: assert the nacl has the correct attributes
+  assert:
+    that:
+    - nacl_facts.nacls | length == 1
+    - nacl_facts.nacls[0].ingress | length == 2
+    - nacl_facts.nacls[0].egress | length == 0
+- name: add egress rules
+  register: nacl
+  ansible.amazon.ec2_vpc_nacl:
+    vpc_id: '{{ vpc_id }}'
+    name: '{{ resource_prefix }}-acl'
+    subnets: '{{ subnet_ids }}'
+    tags:
+      Created_by: Ansible test {{ resource_prefix }}
+    ingress:
+    - - 100
+      - tcp
+      - allow
+      - 0.0.0.0/0
+      - null
+      - null
+      - 22
+      - 22
+    - - 200
+      - tcp
+      - allow
+      - 0.0.0.0/0
+      - null
+      - null
+      - 80
+      - 80
+    egress:
+    - - 100
+      - tcp
+      - allow
+      - 10.0.0.0/24
+      - null
+      - null
+      - 22
+      - 22
+    - - 200
+      - udp
+      - allow
+      - 10.0.0.0/24
+      - null
+      - null
+      - 22
+      - 22
+    state: present
+- name: assert the network acl changed
+  assert:
+    that:
+    - nacl.changed
+    - nacl.nacl_id.startswith('acl-')
+- name: get network ACL facts
+  register: nacl_facts
+  ansible.amazon.ec2_vpc_nacl_info:
+    nacl_ids:
+    - '{{ nacl.nacl_id }}'
+- name: assert the nacl has the correct attributes
+  assert:
+    that:
+    - nacl_facts.nacls | length == 1
+    - nacl_facts.nacls[0].ingress | length == 2
+    - nacl_facts.nacls[0].egress | length == 2
+- name: remove the network ACL
+  register: nacl
+  until: nacl is success
+  ignore_errors: true
+  retries: 5
+  delay: 5
+  ansible.amazon.ec2_vpc_nacl:
+    vpc_id: '{{ vpc_id }}'
+    name: '{{ resource_prefix }}-acl'
+    state: absent
+- name: assert nacl was removed
+  assert:
+    that:
+    - nacl.changed

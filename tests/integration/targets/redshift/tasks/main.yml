@@ -1,0 +1,263 @@
+- block:
+  - name: set connection information for all tasks
+    set_fact:
+      aws_connection_info:
+        aws_access_key: '{{ aws_access_key }}'
+        aws_secret_key: '{{ aws_secret_key }}'
+        security_token: '{{ security_token | default(omit) }}'
+        region: '{{ aws_region }}'
+    no_log: true
+  - name: test failure with no parameters
+    register: result
+    ignore_errors: true
+    ansible.amazon.redshift:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token | default(omit) }}'
+      region: '{{ aws_region }}'
+  - name: assert failure with no parameters
+    assert:
+      that:
+      - result.failed
+      - 'result.msg == "missing required arguments: command, identifier"'
+  - name: test failure with only identifier
+    register: result
+    ignore_errors: true
+    ansible.amazon.redshift:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token | default(omit) }}'
+      region: '{{ aws_region }}'
+      identifier: '{{ redshift_cluster_name }}'
+  - name: assert failure with only identifier
+    assert:
+      that:
+      - result.failed
+      - 'result.msg == "missing required arguments: command"'
+  - name: test create with no identifier
+    register: result
+    ignore_errors: true
+    ansible.amazon.redshift:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token | default(omit) }}'
+      region: '{{ aws_region }}'
+      command: create
+  - name: assert failure with no identifier
+    assert:
+      that:
+      - result.failed
+      - 'result.msg == "missing required arguments: identifier"'
+  - name: test create with missing node_type
+    register: result
+    ignore_errors: true
+    ansible.amazon.redshift:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token | default(omit) }}'
+      region: '{{ aws_region }}'
+      command: create
+      identifier: '{{ redshift_cluster_name }}'
+  - name: assert failure with missing node_type
+    assert:
+      that:
+      - result.failed
+      - 'result.msg == "command is create but all of the following are missing: node_type,
+        username, password"'
+  - name: test create with missing username
+    register: result
+    ignore_errors: true
+    ansible.amazon.redshift:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token | default(omit) }}'
+      region: '{{ aws_region }}'
+      command: create
+      identifier: '{{ redshift_cluster_name }}'
+      username: '{{ redshift_master_username }}'
+  - name: assert create failure with missing username
+    assert:
+      that:
+      - result.failed
+      - 'result.msg == "command is create but all of the following are missing: node_type,
+        password"'
+  - name: test create with missing username
+    register: result
+    ignore_errors: true
+    ansible.amazon.redshift:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token | default(omit) }}'
+      region: '{{ aws_region }}'
+      command: create
+      identifier: '{{ redshift_cluster_name }}'
+      password: '{{ reshift_master_password }}'
+  - name: assert create failure with missing username
+    assert:
+      that:
+      - result.failed
+      - 'result.msg == "command is create but all of the following are missing: node_type,
+        username"'
+  - name: test create with default params
+    register: result
+    ansible.amazon.redshift:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token | default(omit) }}'
+      region: '{{ aws_region }}'
+      command: create
+      identifier: '{{ redshift_cluster_name }}'
+      username: '{{ redshift_master_username }}'
+      password: '{{ reshift_master_password }}'
+      node_type: '{{ node_type }}'
+      wait: true
+      wait_timeout: 1000
+  - debug:
+      msg: '{{ result }}'
+      verbosity: 1
+  - name: assert create success
+    assert:
+      that:
+      - result.changed
+      - result.cluster.identifier == "{{ redshift_cluster_name }}"
+  - name: test create again with default params
+    register: result
+    ansible.amazon.redshift:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token | default(omit) }}'
+      region: '{{ aws_region }}'
+      command: create
+      identifier: '{{ redshift_cluster_name }}'
+      username: '{{ redshift_master_username }}'
+      password: '{{ reshift_master_password }}'
+      node_type: '{{ node_type }}'
+  - name: assert no change gets made to the existing cluster
+    assert:
+      that:
+      - not result.changed
+      - result.cluster.identifier == "{{ redshift_cluster_name }}"
+  - name: test modify cluster
+    register: result
+    ansible.amazon.redshift:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token | default(omit) }}'
+      region: '{{ aws_region }}'
+      command: modify
+      identifier: '{{ redshift_cluster_name }}'
+      new_cluster_identifier: '{{ redshift_cluster_name }}-modified'
+      enhanced_vpc_routing: true
+      wait: true
+      wait_timeout: 1000
+  - name: assert cluster was modified
+    assert:
+      that:
+      - result.changed
+      - result.cluster.identifier == "{{ redshift_cluster_name }}-modified"
+      - result.cluster.enhanced_vpc_routing == True
+  - name: test delete with no cluster identifier
+    register: result
+    ignore_errors: true
+    ansible.amazon.redshift:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token | default(omit) }}'
+      region: '{{ aws_region }}'
+      command: delete
+  - name: assert failure with no identifier
+    assert:
+      that:
+      - result.failed
+      - 'result.msg == "missing required arguments: identifier"'
+  - name: test delete with no snapshot id
+    register: result
+    ignore_errors: true
+    ansible.amazon.redshift:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token | default(omit) }}'
+      region: '{{ aws_region }}'
+      command: delete
+      identifier: '{{ redshift_cluster_name }}'
+  - name: assert failure for no snapshot identifier
+    assert:
+      that:
+      - result.failed
+      - result.msg == "Need to specify final_cluster_snapshot_identifier if skip_final_cluster_snapshot
+        is False"
+  - name: test successful delete
+    register: result
+    ansible.amazon.redshift:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token | default(omit) }}'
+      region: '{{ aws_region }}'
+      command: delete
+      identifier: '{{ redshift_cluster_name }}-modified'
+      skip_final_cluster_snapshot: true
+      wait: true
+      wait_timeout: 1200
+  - name: assert delete
+    assert:
+      that:
+      - result.changed
+  - name: test create multi-node cluster with custom db-name
+    register: result
+    ansible.amazon.redshift:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token | default(omit) }}'
+      region: '{{ aws_region }}'
+      command: create
+      identifier: '{{ redshift_cluster_name }}'
+      username: '{{ redshift_master_username }}'
+      password: '{{ reshift_master_password }}'
+      node_type: '{{ node_type }}'
+      cluster_type: multi-node
+      number_of_nodes: 3
+      wait: true
+      db_name: integration_test
+      wait_timeout: 1800
+  - name: assert create
+    assert:
+      that:
+      - result.changed
+      - result.cluster.identifier == "{{ redshift_cluster_name }}"
+      - result.cluster.db_name == "integration_test"
+  - name: test successful delete of multi-node cluster
+    register: result
+    ansible.amazon.redshift:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token | default(omit) }}'
+      region: '{{ aws_region }}'
+      command: delete
+      identifier: '{{ redshift_cluster_name }}'
+      skip_final_cluster_snapshot: true
+      wait: true
+      wait_timeout: 1200
+  - name: assert delete
+    assert:
+      that:
+      - result.changed
+  always:
+  - name: Remove cluster if tests failed
+    register: cleanup
+    ignore_errors: true
+    retries: 10
+    delay: 10
+    until: cleanup is success
+    loop:
+    - '{{ redshift_cluster_name }}'
+    - '{{ redshift_cluster_name }}-modified'
+    ansible.amazon.redshift:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token | default(omit) }}'
+      region: '{{ aws_region }}'
+      command: delete
+      identifier: '{{ item }}'
+      skip_final_cluster_snapshot: true
+      wait: true
+      wait_timeout: 1200

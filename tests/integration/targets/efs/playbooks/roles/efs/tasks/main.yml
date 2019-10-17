@@ -1,0 +1,335 @@
+- block:
+  - name: set connection information for all tasks
+    set_fact:
+      aws_connection_info:
+        aws_access_key: '{{ aws_access_key }}'
+        aws_secret_key: '{{ aws_secret_key }}'
+        security_token: '{{ security_token }}'
+        region: '{{ aws_region }}'
+    no_log: true
+  - name: Create VPC for testing
+    register: testing_vpc
+    ansible.amazon.ec2_vpc_net:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ resource_prefix }}-vpc'
+      cidr_block: 10.22.32.0/23
+      tags:
+        Name: Ansible ec2_instance Testing VPC
+      tenancy: default
+  - name: Create subnet in zone A for testing
+    register: testing_subnet_a
+    ansible.amazon.ec2_vpc_subnet:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      state: present
+      vpc_id: '{{ testing_vpc.vpc.id }}'
+      cidr: 10.22.32.0/24
+      az: '{{ aws_region }}a'
+      resource_tags:
+        Name: '{{ resource_prefix }}-subnet-a'
+  - name: Create subnet in zone B for testing
+    register: testing_subnet_b
+    ansible.amazon.ec2_vpc_subnet:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      state: present
+      vpc_id: '{{ testing_vpc.vpc.id }}'
+      cidr: 10.22.33.0/24
+      az: '{{ aws_region }}b'
+      resource_tags:
+        Name: '{{ resource_prefix }}-subnet-b'
+  - name: Get default security group id for vpc
+    register: sg_facts
+    ansible.amazon.ec2_group_info:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      filters:
+        vpc-id: '{{ testing_vpc.vpc.id }}'
+  - set_fact:
+      vpc_default_sg_id: '{{sg_facts.security_groups[0].group_id}}'
+  - name: Create Efs for testing
+    register: created_efs
+    ansible.amazon.efs:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      state: present
+      name: '{{ resource_prefix }}-test-efs'
+      tags:
+        Name: '{{ resource_prefix }}-test-tag'
+        Purpose: file-storage
+      targets:
+      - subnet_id: '{{testing_subnet_a.subnet.id}}'
+      - subnet_id: '{{testing_subnet_b.subnet.id}}'
+      throughput_mode: bursting
+  - name: Get all EFS Facts
+    register: efs_result
+    ansible.amazon.efs_info:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+  - assert:
+      that:
+      - (efs_result.efs | length) >= 1
+  - name: Get EFS by creation token
+    register: efs_result
+    ansible.amazon.efs_info:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ resource_prefix }}-test-efs'
+  - set_fact:
+      efs_result_assertions:
+      - efs_result is not changed
+      - (efs_result.efs | length) == 1
+      - efs_result.efs[0].creation_token == "{{ resource_prefix }}-test-efs"
+      - efs_result.efs[0].file_system_id == created_efs.efs.file_system_id
+      - efs_result.efs[0].number_of_mount_targets == 2
+      - (efs_result.efs[0].mount_targets | length) == 2
+      - efs_result.efs[0].name == "{{ resource_prefix }}-test-tag"
+      - efs_result.efs[0].tags.Name == "{{ resource_prefix }}-test-tag"
+      - efs_result.efs[0].tags.Purpose == "file-storage"
+      - efs_result.efs[0].encrypted == false
+      - efs_result.efs[0].life_cycle_state == "available"
+      - efs_result.efs[0].performance_mode == "generalPurpose"
+      - efs_result.efs[0].throughput_mode  == "bursting"
+      - efs_result.efs[0].mount_targets[0].security_groups[0] == vpc_default_sg_id
+      - efs_result.efs[0].mount_targets[1].security_groups[0] == vpc_default_sg_id
+  - assert:
+      that: '{{efs_result_assertions}}'
+  - name: Get EFS by id
+    register: efs_result
+    ansible.amazon.efs_info:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      id: '{{created_efs.efs.file_system_id}}'
+  - assert:
+      that: '{{efs_result_assertions}}'
+  - name: Get EFS by tag
+    register: efs_result
+    ansible.amazon.efs_info:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      tags:
+        Name: '{{ resource_prefix }}-test-tag'
+  - assert:
+      that: '{{efs_result_assertions}}'
+  - name: Get EFS by target (subnet_id)
+    register: efs_result
+    ansible.amazon.efs_info:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      targets:
+      - '{{testing_subnet_a.subnet.id}}'
+  - assert:
+      that: '{{efs_result_assertions}}'
+  - name: Get EFS by target (security_group_id)
+    register: efs_result
+    ansible.amazon.efs_info:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      targets:
+      - '{{vpc_default_sg_id}}'
+  - assert:
+      that: '{{efs_result_assertions}}'
+  - name: Get EFS by tag and target
+    register: efs_result
+    ansible.amazon.efs_info:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      tags:
+        Name: '{{ resource_prefix }}-test-tag'
+      targets:
+      - '{{testing_subnet_a.subnet.id}}'
+  - assert:
+      that: '{{efs_result_assertions}}'
+  - name: Update Efs to use provisioned throughput_mode
+    register: efs_result
+    ansible.amazon.efs:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      state: present
+      name: '{{ resource_prefix }}-test-efs'
+      tags:
+        Name: '{{ resource_prefix }}-test-tag'
+        Purpose: file-storage
+      targets:
+      - subnet_id: '{{testing_subnet_a.subnet.id}}'
+      - subnet_id: '{{testing_subnet_b.subnet.id}}'
+      throughput_mode: provisioned
+      provisioned_throughput_in_mibps: 5.0
+  - assert:
+      that:
+      - efs_result is changed
+  - name: Efs same value for provisioned_throughput_in_mibps
+    register: efs_result
+    ansible.amazon.efs:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      state: present
+      name: '{{ resource_prefix }}-test-efs'
+      tags:
+        Name: '{{ resource_prefix }}-test-tag'
+        Purpose: file-storage
+      targets:
+      - subnet_id: '{{testing_subnet_a.subnet.id}}'
+      - subnet_id: '{{testing_subnet_b.subnet.id}}'
+      throughput_mode: provisioned
+      provisioned_throughput_in_mibps: 5.0
+  - assert:
+      that:
+      - efs_result is not changed
+      - efs_result.efs["throughput_mode"]  == "provisioned"
+      - efs_result.efs["provisioned_throughput_in_mibps"] == 5.0
+  - name: Efs new value for provisioned_throughput_in_mibps
+    register: efs_result
+    ansible.amazon.efs:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      state: present
+      name: '{{ resource_prefix }}-test-efs'
+      tags:
+        Name: '{{ resource_prefix }}-test-tag'
+        Purpose: file-storage
+      targets:
+      - subnet_id: '{{testing_subnet_a.subnet.id}}'
+      - subnet_id: '{{testing_subnet_b.subnet.id}}'
+      throughput_mode: provisioned
+      provisioned_throughput_in_mibps: 8.0
+  - assert:
+      that:
+      - efs_result is changed
+      - efs_result.efs["provisioned_throughput_in_mibps"] == 8.0
+  - name: Check new facts with provisioned mode
+    register: efs_result
+    ansible.amazon.efs_info:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ resource_prefix }}-test-efs'
+  - set_fact:
+      efs_result_assertions:
+      - efs_result is not changed
+      - efs_result.efs[0].throughput_mode  == "provisioned"
+      - efs_result.efs[0].provisioned_throughput_in_mibps == 8.0
+      - (efs_result.efs | length) == 1
+      - efs_result.efs[0].creation_token == "{{ resource_prefix }}-test-efs"
+      - efs_result.efs[0].file_system_id == created_efs.efs.file_system_id
+  - assert:
+      that: '{{efs_result_assertions}}'
+  - name: Query unknown EFS by tag
+    register: efs_result
+    ansible.amazon.efs_info:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      tags:
+        Name: '{{ resource_prefix }}-unknown'
+  - assert:
+      that:
+      - efs_result is not changed
+      - (efs_result.efs | length) == 0
+  - name: Query unknown EFS by target
+    register: efs_result
+    ansible.amazon.efs_info:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      targets:
+      - sg-00000000000
+  - assert:
+      that:
+      - efs_result is not changed
+      - (efs_result.efs | length) == 0
+  always:
+  - name: Delete EFS used for tests
+    register: removed
+    until: removed is not failed
+    ignore_errors: true
+    retries: 10
+    ansible.amazon.efs:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      state: absent
+      name: '{{ resource_prefix }}-test-efs'
+      tags:
+        Name: '{{ resource_prefix }}-test-tag'
+        Purpose: file-storage
+  - name: Remove test subnet in zone A
+    register: removed
+    until: removed is not failed
+    ignore_errors: true
+    retries: 10
+    ansible.amazon.ec2_vpc_subnet:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      state: absent
+      vpc_id: '{{ testing_vpc.vpc.id }}'
+      cidr: 10.22.32.0/24
+      az: '{{ aws_region }}a'
+      resource_tags:
+        Name: '{{ resource_prefix }}-subnet-a'
+  - name: Remove test subnet in zone B
+    register: removed
+    until: removed is not failed
+    ignore_errors: true
+    retries: 10
+    ansible.amazon.ec2_vpc_subnet:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      state: absent
+      vpc_id: '{{ testing_vpc.vpc.id }}'
+      cidr: 10.22.33.0/24
+      az: '{{ aws_region }}b'
+      resource_tags:
+        Name: '{{ resource_prefix }}-subnet-b'
+  - name: remove the VPC
+    register: removed
+    until: removed is not failed
+    ignore_errors: true
+    retries: 10
+    ansible.amazon.ec2_vpc_net:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ resource_prefix }}-vpc'
+      cidr_block: 10.22.32.0/23
+      state: absent

@@ -1,0 +1,6 @@
+- include_tasks: obtain-lock.yaml
+  when: not won_lock|default(False)|bool
+- name: Lock Retry Delay
+  wait_for:
+    timeout: '{{ obtain_lock_delay_seconds + 15|random }}'
+  when: obtain_lock_attempt < (max_obtain_lock_attempts - 1) and not won_lock|bool

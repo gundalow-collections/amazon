@@ -1,0 +1,137 @@
+- module_defaults:
+    group/aws:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token | default(omit) }}'
+      region: '{{ aws_region }}'
+  block:
+  - name: test without any parameters
+    register: result
+    ignore_errors: true
+    ansible.amazon.ec2_vpc_nacl: null
+  - name: assert required parameters
+    assert:
+      that:
+      - result.failed
+      - 'result.msg == ''one of the following is required: name, nacl_id'''
+  - name: get network ACL info without any parameters
+    register: nacl_facts
+    ansible.amazon.ec2_vpc_nacl_info: null
+  - name: assert we don't error
+    assert:
+      that:
+      - nacl_facts is succeeded
+  - name: get network ACL info with invalid ID
+    register: nacl_facts
+    ignore_errors: true
+    ansible.amazon.ec2_vpc_nacl_info:
+      nacl_ids:
+      - acl-000000000000
+  - name: assert message mentions missing ACLs
+    assert:
+      that:
+      - nacl_facts is failed
+      - '"does not exist" in nacl_facts.msg'
+  - name: fetch AZ availability
+    register: az_info
+    ansible.amazon.aws_az_info: null
+  - name: Assert that we have multiple AZs available to us
+    assert:
+      that: az_info.availability_zones | length >= 2
+  - name: pick AZs
+    set_fact:
+      az_one: '{{ az_info.availability_zones[0].zone_name }}'
+      az_two: '{{ az_info.availability_zones[1].zone_name }}'
+  - name: create a VPC
+    register: vpc
+    ansible.amazon.ec2_vpc_net:
+      cidr_block: 10.230.230.0/24
+      name: '{{ resource_prefix }}'
+      state: present
+  - name: create subnets
+    with_items:
+    - cidr: 10.230.230.0/26
+      az: '{{ az_one }}'
+      name: '{{ resource_prefix }}-subnet-1'
+    - cidr: 10.230.230.64/26
+      az: '{{ az_two }}'
+      name: '{{ resource_prefix }}-subnet-2'
+    - cidr: 10.230.230.128/26
+      az: '{{ az_one }}'
+      name: '{{ resource_prefix }}-subnet-3'
+    - cidr: 10.230.230.192/26
+      az: '{{ az_two }}'
+      name: '{{ resource_prefix }}-subnet-4'
+    register: subnets
+    ansible.amazon.ec2_vpc_subnet:
+      cidr: '{{ item.cidr }}'
+      az: '{{ item.az }}'
+      vpc_id: '{{ vpc.vpc.id }}'
+      state: present
+      tags:
+        Name: '{{ item.name }}'
+  - include_tasks: tasks/subnet_ids.yml
+    vars:
+      vpc_id: '{{ vpc.vpc.id }}'
+      subnet_ids: '{{ subnets | json_query(''results[*].subnet.id'') }}'
+  - include_tasks: tasks/subnet_names.yml
+    vars:
+      vpc_id: '{{ vpc.vpc.id }}'
+      subnet_names: '{{ subnets | json_query(''results[*].subnet.tags.Name'') }}'
+  - include_tasks: tasks/tags.yml
+    vars:
+      vpc_id: '{{ vpc.vpc.id }}'
+      subnet_ids: '{{ subnets | json_query(''results[*].subnet.id'') }}'
+  - include_tasks: tasks/ingress_and_egress.yml
+    vars:
+      vpc_id: '{{ vpc.vpc.id }}'
+      subnet_ids: '{{ subnets | json_query(''results[*].subnet.id'') }}'
+  - include_tasks: tasks/ipv6.yml
+  always:
+  - name: remove network ACL
+    register: removed_acl
+    until: removed_acl is success
+    retries: 5
+    delay: 5
+    ignore_errors: true
+    ansible.amazon.ec2_vpc_nacl:
+      vpc_id: '{{ vpc.vpc.id }}'
+      name: '{{ resource_prefix }}-acl'
+      state: absent
+  - name: remove subnets
+    with_items:
+    - cidr: 10.230.230.0/26
+      az: a
+      public: 'True'
+    - cidr: 10.230.230.64/26
+      az: b
+      public: 'True'
+    - cidr: 10.230.230.128/26
+      az: a
+      public: 'False'
+    - cidr: 10.230.230.192/26
+      az: b
+      public: 'False'
+    ignore_errors: true
+    register: removed_subnets
+    until: removed_subnets is success
+    retries: 5
+    delay: 5
+    ansible.amazon.ec2_vpc_subnet:
+      cidr: '{{ item.cidr }}'
+      az: '{{ aws_region}}{{ item.az }}'
+      vpc_id: '{{ vpc.vpc.id }}'
+      state: absent
+      tags:
+        Public: '{{ item.public | string }}'
+        Name: '{{ item.public | ternary(''public'', ''private'') }}-{{ item.az }}'
+  - name: remove the VPC
+    ignore_errors: true
+    register: removed_vpc
+    until: removed_vpc is success
+    retries: 5
+    delay: 5
+    ansible.amazon.ec2_vpc_net:
+      cidr_block: 10.230.230.0/24
+      name: '{{ resource_prefix }}'
+      state: absent

@@ -1,0 +1,213 @@
+- name: set up aws connection info
+  set_fact:
+    aws_connection_info:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+  no_log: true
+- name: test create rule sets
+  block:
+  - name: create rule set
+    register: result
+    ansible.amazon.aws_ses_rule_set:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ default_rule_set }}'
+  - name: assert changed to exists inactive
+    assert:
+      that:
+      - result.changed == True
+      - result.active == False
+      - default_rule_set in result.rule_sets|map(attribute='name')
+  - name: recreate rule set
+    register: result
+    ansible.amazon.aws_ses_rule_set:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ default_rule_set }}'
+  - name: assert changed is False
+    assert:
+      that:
+      - result.changed == False
+  always:
+  - name: cleanup rule set
+    ansible.amazon.aws_ses_rule_set:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ default_rule_set }}'
+      state: absent
+      force: true
+- name: Remove No Such Rules Set
+  block:
+  - name: remove ruleset
+    register: result
+    ansible.amazon.aws_ses_rule_set:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ default_rule_set }}'
+      state: absent
+  - name: assert not changed and absent
+    assert:
+      that:
+      - result.changed == False
+      - default_rule_set not in result.rule_sets|map(attribute='name')
+- name: Remove Inactive Rule Set
+  block:
+  - name: create rule set
+    ansible.amazon.aws_ses_rule_set:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ default_rule_set }}'
+  - name: remove rule set
+    register: result
+    ansible.amazon.aws_ses_rule_set:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ default_rule_set }}'
+      state: absent
+  - name: assert changed and removed
+    assert:
+      that:
+      - result.changed == True
+      - default_rule_set not in result.rule_sets|map(attribute='name')
+  always:
+  - name: cleanup rule set
+    ansible.amazon.aws_ses_rule_set:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ default_rule_set }}'
+      state: absent
+      force: true
+- name: test create in check mode
+  block:
+  - name: create rule set in check mode
+    register: result
+    check_mode: true
+    ansible.amazon.aws_ses_rule_set:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ default_rule_set }}'
+  - name: assert changed inactive and present
+    assert:
+      that:
+      - result.changed == True
+      - result.active == False
+      - default_rule_set in result.rule_sets|map(attribute='name')
+  always:
+  - name: cleanup rule set
+    register: result
+    ansible.amazon.aws_ses_rule_set:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ default_rule_set }}'
+      state: absent
+      force: true
+  - name: assert nothing to clean up since create was in check mode
+    assert:
+      that:
+      - result.changed == False
+- name: mark rule set active in check mode
+  block:
+  - name: create rule set
+    ansible.amazon.aws_ses_rule_set:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ default_rule_set }}'
+  - name: mark rule set active in check mode
+    register: result
+    check_mode: true
+    ansible.amazon.aws_ses_rule_set:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ default_rule_set }}'
+      active: true
+  - name: assert changed and active
+    assert:
+      that:
+      - result.changed == True
+      - result.active == True
+  - name: Ensure rule set is inactive
+    register: result
+    ansible.amazon.aws_ses_rule_set:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ default_rule_set }}'
+      active: false
+  - name: assert unchanged since activation was in check mode
+    assert:
+      that:
+      - result.changed == False
+  always:
+  - name: cleanup rule set
+    ansible.amazon.aws_ses_rule_set:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ default_rule_set }}'
+      state: absent
+      force: true
+- name: Remove Inactive Rule Set in check mode
+  block:
+  - name: create rule set
+    ansible.amazon.aws_ses_rule_set:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ default_rule_set }}'
+  - name: remove rule set
+    register: result
+    check_mode: true
+    ansible.amazon.aws_ses_rule_set:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ default_rule_set }}'
+      state: absent
+  - name: assert changed and removed
+    assert:
+      that:
+      - result.changed == True
+      - default_rule_set not in result.rule_sets|map(attribute='name')
+  always:
+  - name: cleanup rule set
+    register: result
+    ansible.amazon.aws_ses_rule_set:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ default_rule_set }}'
+      state: absent
+      force: true
+  - name: assert changed is True since previous removal was in check mode
+    assert:
+      that:
+      - result.changed == True

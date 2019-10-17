@@ -1,0 +1,100 @@
+- block:
+  - name: set up aws connection info
+    set_fact:
+      aws_connection_info:
+        aws_access_key: '{{ aws_access_key }}'
+        aws_secret_key: '{{ aws_secret_key }}'
+        security_token: '{{ security_token }}'
+        region: '{{ aws_region }}'
+    no_log: true
+  - name: Ensure the resource doesn't exist
+    register: result
+    ansible.amazon.rds_instance:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      id: '{{ instance_id }}'
+      state: absent
+      skip_final_snapshot: true
+  - assert:
+      that:
+      - not result.changed
+    ignore_errors: true
+  - name: Create a source DB instance
+    register: source_db
+    ansible.amazon.rds_instance:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      id: '{{ instance_id }}'
+      state: present
+      engine: mysql
+      backup_retention_period: 1
+      username: '{{ username }}'
+      password: '{{ password }}'
+      db_instance_class: '{{ db_instance_class }}'
+      allocated_storage: '{{ allocated_storage }}'
+  - assert:
+      that:
+      - source_db.changed
+      - source_db.db_instance_identifier == '{{ instance_id }}'
+  - name: Create a point in time DB instance
+    register: result
+    ansible.amazon.rds_instance:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      id: '{{ instance_id }}-point-in-time'
+      state: present
+      source_db_instance_identifier: '{{ instance_id }}'
+      creation_source: instance
+      engine: mysql
+      username: '{{ username }}'
+      password: '{{ password }}'
+      db_instance_class: '{{ db_instance_class }}'
+      allocated_storage: '{{ allocated_storage }}'
+      use_latest_restorable_time: true
+  - name: Test idempotence with a point in time replica
+    register: result
+    ansible.amazon.rds_instance:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      id: '{{ instance_id }}-point-in-time'
+      state: present
+      source_db_instance_identifier: '{{ instance_id }}'
+      creation_source: instance
+      engine: mysql
+      username: '{{ username }}'
+      password: '{{ password }}'
+      db_instance_class: '{{ db_instance_class }}'
+      allocated_storage: '{{ allocated_storage }}'
+      restore_time: '{{ result.latest_restorable_time }}'
+  - assert:
+      that:
+      - not result.changed
+  always:
+  - name: Remove the DB instance
+    ignore_errors: true
+    ansible.amazon.rds_instance:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      id: '{{ instance_id }}'
+      state: absent
+      skip_final_snapshot: true
+  - name: Remove the point in time restored DB
+    ignore_errors: true
+    ansible.amazon.rds_instance:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      id: '{{ instance_id }}-point-in-time'
+      state: absent
+      skip_final_snapshot: true

@@ -1,0 +1,194 @@
+- name: set connection information for all tasks
+  set_fact:
+    aws_connection_info:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      region: '{{ aws_region }}'
+    dms_sg_identifier: '{{ resource_prefix }}-dms'
+  no_log: true
+- block:
+  - name: ensure IAM role exists
+    register: iam_role_output
+    ignore_errors: true
+    ansible.amazon.iam_role:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      region: '{{ aws_region }}'
+      name: '{{ dms_role_role_name }}'
+      assume_role_policy_document: '{{ lookup(''file'',''dmsAssumeRolePolicyDocument.json'')
+        }}'
+      state: present
+      create_instance_profile: false
+      managed_policy:
+      - arn:aws:iam::aws:policy/service-role/AmazonDMSVPCManagementRole
+  - name: Create VPC for use in testing
+    register: testing_vpc
+    ansible.amazon.ec2_vpc_net:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      region: '{{ aws_region }}'
+      name: '{{ resource_prefix }}-vpc'
+      cidr_block: 10.22.32.0/23
+      tags:
+        Name: Ansible ec2_instance Testing VPC
+      tenancy: default
+  - name: create subnet1
+    register: subnet1
+    ansible.amazon.ec2_vpc_subnet:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      region: '{{ aws_region }}'
+      state: present
+      vpc_id: '{{ testing_vpc.vpc.id }}'
+      cidr: 10.22.32.16/28
+      az: eu-west-1a
+  - name: create subnet2
+    register: subnet2
+    ansible.amazon.ec2_vpc_subnet:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      region: '{{ aws_region }}'
+      state: present
+      vpc_id: '{{ testing_vpc.vpc.id }}'
+      cidr: 10.22.32.32/28
+      az: eu-west-1c
+  - name: create replication subnet group
+    register: result
+    ansible.amazon.dms_replication_subnet_group:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      region: '{{ aws_region }}'
+      state: present
+      identifier: '{{ dms_sg_identifier }}'
+      description: Development Subnet Group
+      subnet_ids:
+      - '{{ subnet1.subnet.id }}'
+      - '{{ subnet2.subnet.id }}'
+  - assert:
+      that:
+      - result is changed
+      - result is not failed
+  - name: create subnet group no change
+    register: result
+    ansible.amazon.dms_replication_subnet_group:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      region: '{{ aws_region }}'
+      state: present
+      identifier: '{{ dms_sg_identifier }}'
+      description: Development Subnet Group
+      subnet_ids:
+      - '{{ subnet1.subnet.id }}'
+      - '{{ subnet2.subnet.id }}'
+  - assert:
+      that:
+      - result is not changed
+      - result is not failed
+  - name: update subnet group
+    register: result
+    ansible.amazon.dms_replication_subnet_group:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      region: '{{ aws_region }}'
+      state: present
+      identifier: '{{ dms_sg_identifier }}'
+      description: Development Subnet Group updated
+      subnet_ids:
+      - '{{ subnet1.subnet.id }}'
+      - '{{ subnet2.subnet.id }}'
+  - assert:
+      that:
+      - result is changed
+      - result is not failed
+  - name: update subnet group no change
+    register: result
+    ansible.amazon.dms_replication_subnet_group:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      region: '{{ aws_region }}'
+      state: present
+      identifier: '{{ dms_sg_identifier }}'
+      description: Development Subnet Group updated
+      subnet_ids:
+      - '{{ subnet1.subnet.id }}'
+      - '{{ subnet2.subnet.id }}'
+  - assert:
+      that:
+      - result is not changed
+      - result is not failed
+  always:
+  - name: delete subnet group no change
+    register: result
+    ansible.amazon.dms_replication_subnet_group:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      region: '{{ aws_region }}'
+      state: absent
+      identifier: '{{ dms_sg_identifier }}'
+      description: Development Subnet Group updated
+      subnet_ids:
+      - '{{ subnet1.subnet.id }}'
+      - '{{ subnet2.subnet.id }}'
+  - assert:
+      that:
+      - result is changed
+      - result is not failed
+  - name: delete subnet group no change
+    register: result
+    ansible.amazon.dms_replication_subnet_group:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      region: '{{ aws_region }}'
+      state: absent
+      identifier: '{{ dms_sg_identifier }}'
+      description: Development Subnet Group updated
+      subnet_ids:
+      - '{{ subnet1.subnet.id }}'
+      - '{{ subnet2.subnet.id }}'
+  - assert:
+      that:
+      - result is not changed
+      - result is not failed
+  - name: delete subnet1
+    ansible.amazon.ec2_vpc_subnet:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      region: '{{ aws_region }}'
+      state: absent
+      vpc_id: '{{ testing_vpc.vpc.id }}'
+      cidr: 10.22.32.16/28
+      az: eu-west-1a
+  - name: delete subnet2
+    ansible.amazon.ec2_vpc_subnet:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      region: '{{ aws_region }}'
+      state: absent
+      vpc_id: '{{ testing_vpc.vpc.id }}'
+      cidr: 10.22.32.32/28
+      az: eu-west-1c
+  - name: delete VPC for use in testing
+    ansible.amazon.ec2_vpc_net:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      region: '{{ aws_region }}'
+      name: '{{ resource_prefix }}-vpc'
+      cidr_block: 10.22.32.0/23
+      tags:
+        Name: Ansible ec2_instance Testing VPC
+      tenancy: default
+      state: absent
+  - name: delete dms-vpc role
+    register: iam_role_output
+    ignore_errors: true
+    ansible.amazon.iam_role:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      region: '{{ aws_region }}'
+      name: '{{ dms_role_role_name }}'
+      assume_role_policy_document: '{{ lookup(''file'',''dmsAssumeRolePolicyDocument.json'')
+        }}'
+      state: absent
+      create_instance_profile: false
+      managed_policy:
+      - arn:aws:iam::aws:policy/service-role/AmazonDMSVPCManagementRole

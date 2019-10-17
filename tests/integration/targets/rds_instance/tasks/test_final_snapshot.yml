@@ -1,0 +1,83 @@
+- block:
+  - name: set up aws connection info
+    set_fact:
+      aws_connection_info:
+        aws_access_key: '{{ aws_access_key }}'
+        aws_secret_key: '{{ aws_secret_key }}'
+        security_token: '{{ security_token }}'
+        region: '{{ aws_region }}'
+    no_log: true
+  - name: Ensure the resource doesn't exist
+    register: result
+    ansible.amazon.rds_instance:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      id: '{{ instance_id }}'
+      state: absent
+      skip_final_snapshot: true
+  - assert:
+      that:
+      - not result.changed
+    ignore_errors: true
+  - name: Create a mariadb instance
+    register: result
+    ansible.amazon.rds_instance:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      id: '{{ instance_id }}'
+      state: present
+      engine: mariadb
+      username: '{{ username }}'
+      password: '{{ password }}'
+      db_instance_class: '{{ db_instance_class }}'
+      allocated_storage: '{{ allocated_storage }}'
+  - name: Delete the DB instance
+    register: result
+    ansible.amazon.rds_instance:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      id: '{{ instance_id }}'
+      state: absent
+      final_snapshot_identifier: '{{ instance_id }}'
+  - assert:
+      that:
+      - result.changed
+      - result.final_snapshot.db_instance_identifier == '{{ instance_id }}'
+  - name: Check that snapshot exists
+    register: result
+    ansible.amazon.rds_snapshot_info:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      db_snapshot_identifier: '{{ instance_id }}'
+  - assert:
+      that:
+      - result.snapshots | length == 1
+      - result.snapshots.0.engine == 'mariadb'
+  always:
+  - name: Remove the snapshot
+    ignore_errors: true
+    ansible.amazon.rds_snapshot:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      db_snapshot_identifier: '{{ instance_id }}'
+      state: absent
+  - name: Remove the DB instance
+    ignore_errors: true
+    ansible.amazon.rds_instance:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      id: '{{ instance_id }}'
+      state: absent
+      skip_final_snapshot: true

@@ -1,0 +1,3 @@
+codepipeline_name: '{{ resource_prefix }}-test-codepipeline'
+unique_id: '{{ resource_prefix | regex_search(''(\d+-?)(\d+)$'') }}'
+codepipeline_service_role_name: ansible-test-sts-{{ unique_id }}-codepipeline-role

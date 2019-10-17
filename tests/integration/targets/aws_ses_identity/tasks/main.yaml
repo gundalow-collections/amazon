@@ -1,0 +1,777 @@
+- name: set up aws connection info
+  set_fact:
+    aws_connection_info:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+  no_log: true
+- name: test register email identity
+  block:
+  - name: register email identity
+    register: result
+    ansible.amazon.aws_ses_identity:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      identity: '{{ email_identity }}'
+      state: present
+  - name: assert changed is True
+    assert:
+      that:
+      - result.changed == True
+  - import_tasks: assert_defaults.yaml
+    vars:
+      identity: '{{ email_identity }}'
+  always:
+  - name: cleanup email identity
+    ansible.amazon.aws_ses_identity:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      identity: '{{ email_identity }}'
+      state: absent
+- name: test register domain identity
+  block:
+  - name: register domain identity
+    register: result
+    ansible.amazon.aws_ses_identity:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      identity: '{{ domain_identity }}'
+      state: present
+  - name: assert changed is True
+    assert:
+      that:
+      - result.changed == True
+  - import_tasks: assert_defaults.yaml
+    vars:
+      identity: '{{ domain_identity }}'
+  - name: assert verification_attributes.verification_token is defined
+    assert:
+      that:
+      - result.verification_attributes.verification_token
+  always:
+  - name: cleanup domain identity
+    ansible.amazon.aws_ses_identity:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      identity: '{{ domain_identity }}'
+      state: absent
+- name: test email_identity unchanged when already existing
+  block:
+  - name: register identity
+    ansible.amazon.aws_ses_identity:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      identity: '{{ email_identity }}'
+      state: present
+  - name: duplicate register identity
+    register: result
+    ansible.amazon.aws_ses_identity:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      identity: '{{ email_identity }}'
+      state: present
+  - name: assert changed is False
+    assert:
+      that:
+      - result.changed == False
+  - import_tasks: assert_defaults.yaml
+    vars:
+      identity: '{{ email_identity }}'
+  always:
+  - name: cleanup identity
+    ansible.amazon.aws_ses_identity:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      identity: '{{ email_identity }}'
+      state: absent
+- name: test domain_identity unchanged when already existing
+  block:
+  - name: register identity
+    ansible.amazon.aws_ses_identity:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      identity: '{{ domain_identity }}'
+      state: present
+  - name: duplicate register identity
+    register: result
+    ansible.amazon.aws_ses_identity:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      identity: '{{ domain_identity }}'
+      state: present
+  - name: assert changed is False
+    assert:
+      that:
+      - result.changed == False
+  - import_tasks: assert_defaults.yaml
+    vars:
+      identity: '{{ domain_identity }}'
+  always:
+  - name: cleanup identity
+    ansible.amazon.aws_ses_identity:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      identity: '{{ domain_identity }}'
+      state: absent
+- name: test register identity without explicit region
+  block:
+  - name: register email identity without explicit region
+    register: result
+    environment:
+      AWS_DEFAULT_REGION: '{{ aws_region }}'
+    ansible.amazon.aws_ses_identity:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ omit }}'
+      identity: '{{ email_identity }}'
+      state: present
+  - name: assert changed is True
+    assert:
+      that:
+      - result.changed == True
+  - import_tasks: assert_defaults.yaml
+    vars:
+      identity: '{{ email_identity }}'
+  always:
+  - name: cleanup email identity
+    ansible.amazon.aws_ses_identity:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      identity: '{{ email_identity }}'
+      state: absent
+- name: test register email identity check mode
+  block:
+  - name: register email identity check mode
+    register: result
+    check_mode: true
+    ansible.amazon.aws_ses_identity:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      identity: '{{ email_identity }}'
+      state: present
+  - name: assert changed is True
+    assert:
+      that:
+      - result.changed == True
+  - import_tasks: assert_defaults.yaml
+    vars:
+      identity: '{{ email_identity }}'
+  always:
+  - name: cleanup email identity
+    register: result
+    ansible.amazon.aws_ses_identity:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      identity: '{{ email_identity }}'
+      state: absent
+  - name: assert nothing to clean up since check mode
+    assert:
+      that:
+      - result.changed == False
+- name: test register domain identity check mode
+  block:
+  - name: register domain identity check mode
+    register: result
+    check_mode: true
+    ansible.amazon.aws_ses_identity:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      identity: '{{ domain_identity }}'
+      state: present
+  - name: assert changed is True
+    assert:
+      that:
+      - result.changed == True
+  - import_tasks: assert_defaults.yaml
+    vars:
+      identity: '{{ domain_identity }}'
+  always:
+  - name: cleanup domain identity
+    register: result
+    ansible.amazon.aws_ses_identity:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      identity: '{{ domain_identity }}'
+      state: absent
+  - name: assert nothing to clean up since check mode
+    assert:
+      that:
+      - result.changed == False
+- name: remove non-existent email identity
+  register: result
+  ansible.amazon.aws_ses_identity:
+    aws_access_key: '{{ aws_access_key }}'
+    aws_secret_key: '{{ aws_secret_key }}'
+    security_token: '{{ security_token }}'
+    region: '{{ aws_region }}'
+    identity: '{{ email_identity }}'
+    state: absent
+- name: assert changed is False
+  assert:
+    that:
+    - result.changed == False
+- name: remove non-existent domain identity
+  register: result
+  ansible.amazon.aws_ses_identity:
+    aws_access_key: '{{ aws_access_key }}'
+    aws_secret_key: '{{ aws_secret_key }}'
+    security_token: '{{ security_token }}'
+    region: '{{ aws_region }}'
+    identity: '{{ domain_identity }}'
+    state: absent
+- name: assert changed is False
+  assert:
+    that:
+    - result.changed == False
+- name: test remove email identity check mode
+  block:
+  - name: register email identity
+    register: result
+    ansible.amazon.aws_ses_identity:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      identity: '{{ email_identity }}'
+      state: present
+  - name: remove email identity check mode
+    register: result
+    check_mode: true
+    ansible.amazon.aws_ses_identity:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      identity: '{{ email_identity }}'
+      state: absent
+  - name: assert changed is True
+    assert:
+      that:
+      - result.changed == True
+  always:
+  - name: cleanup email identity
+    register: result
+    ansible.amazon.aws_ses_identity:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      identity: '{{ email_identity }}'
+      state: absent
+  - name: assert something to clean up since remove was check mode
+    assert:
+      that:
+      - result.changed == True
+- name: test remove domain identity check mode
+  block:
+  - name: register domain identity
+    register: result
+    ansible.amazon.aws_ses_identity:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      identity: '{{ domain_identity }}'
+      state: present
+  - name: remove domain identity check mode
+    register: result
+    check_mode: true
+    ansible.amazon.aws_ses_identity:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      identity: '{{ domain_identity }}'
+      state: absent
+  - name: assert changed is True
+    assert:
+      that:
+      - result.changed == True
+  always:
+  - name: cleanup domain identity
+    register: result
+    ansible.amazon.aws_ses_identity:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      identity: '{{ domain_identity }}'
+      state: absent
+  - name: assert something to clean up since remove was check mode
+    assert:
+      that:
+      - result.changed == True
+- name: test set notification queues
+  block:
+  - name: test topic
+    register: topic_info
+    with_items:
+    - bounce
+    - complaint
+    - delivery
+    ansible.amazon.sns_topic:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ notification_queue_name }}-{{ item }}'
+      state: present
+  - name: register email identity
+    register: result
+    ansible.amazon.aws_ses_identity:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      identity: '{{ email_identity }}'
+      state: present
+      bounce_notifications:
+        topic: '{{ topic_info.results[0].sns_arn }}'
+      complaint_notifications:
+        topic: '{{ topic_info.results[1].sns_arn }}'
+      delivery_notifications:
+        topic: '{{ topic_info.results[2].sns_arn }}'
+  - name: assert notification settings
+    assert:
+      that:
+      - result.notification_attributes.bounce_topic == topic_info.results[0].sns_arn
+      - result.notification_attributes.complaint_topic == topic_info.results[1].sns_arn
+      - result.notification_attributes.delivery_topic == topic_info.results[2].sns_arn
+  - name: assert notification headers unchanged
+    assert:
+      that:
+      - result.notification_attributes.headers_in_bounce_notifications_enabled ==
+        False
+      - result.notification_attributes.headers_in_complaint_notifications_enabled
+        == False
+      - result.notification_attributes.headers_in_delivery_notifications_enabled ==
+        False
+  always:
+  - name: cleanup topics
+    with_items:
+    - bounce
+    - complaint
+    - delivery
+    ansible.amazon.sns_topic:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ notification_queue_name }}-{{ item }}'
+      state: absent
+  - name: cleanup email identity
+    ansible.amazon.aws_ses_identity:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      identity: '{{ email_identity }}'
+      state: absent
+- name: test change notification queues after create
+  block:
+  - name: test topic
+    register: topic_info
+    with_items:
+    - bounce
+    - complaint
+    - delivery
+    ansible.amazon.sns_topic:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ notification_queue_name }}-{{ item }}'
+      state: present
+  - name: register email identity
+    ansible.amazon.aws_ses_identity:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      identity: '{{ email_identity }}'
+      state: present
+  - name: set notification topics
+    register: result
+    ansible.amazon.aws_ses_identity:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      identity: '{{ email_identity }}'
+      state: present
+      bounce_notifications:
+        topic: '{{ topic_info.results[0].sns_arn }}'
+      complaint_notifications:
+        topic: '{{ topic_info.results[1].sns_arn }}'
+      delivery_notifications:
+        topic: '{{ topic_info.results[2].sns_arn }}'
+  - name: assert changed is True
+    assert:
+      that:
+      - result.changed == True
+  - name: assert notification settings
+    assert:
+      that:
+      - result.notification_attributes.bounce_topic == topic_info.results[0].sns_arn
+      - result.notification_attributes.complaint_topic == topic_info.results[1].sns_arn
+      - result.notification_attributes.delivery_topic == topic_info.results[2].sns_arn
+  always:
+  - name: cleanup topics
+    with_items:
+    - bounce
+    - complaint
+    - delivery
+    ansible.amazon.sns_topic:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ notification_queue_name }}-{{ item }}'
+      state: absent
+  - name: cleanup email identity
+    ansible.amazon.aws_ses_identity:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      identity: '{{ email_identity }}'
+      state: absent
+- name: test change notification settings check mode
+  block:
+  - name: test topic
+    register: topic_info
+    with_items:
+    - bounce
+    - complaint
+    - delivery
+    ansible.amazon.sns_topic:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ notification_queue_name }}-{{ item }}'
+      state: present
+  - name: register email identity
+    ansible.amazon.aws_ses_identity:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      identity: '{{ email_identity }}'
+      state: present
+  - name: set notification settings check mode
+    register: result
+    check_mode: true
+    ansible.amazon.aws_ses_identity:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      identity: '{{ email_identity }}'
+      state: present
+      bounce_notifications:
+        topic: '{{ topic_info.results[0].sns_arn }}'
+        include_headers: true
+      complaint_notifications:
+        topic: '{{ topic_info.results[1].sns_arn }}'
+        include_headers: true
+      delivery_notifications:
+        topic: '{{ topic_info.results[2].sns_arn }}'
+        include_headers: true
+      feedback_forwarding: false
+  - name: assert changed is True
+    assert:
+      that:
+      - result.changed == True
+  - name: assert notification settings
+    assert:
+      that:
+      - result.notification_attributes.bounce_topic == topic_info.results[0].sns_arn
+      - result.notification_attributes.headers_in_bounce_notifications_enabled ==
+        True
+      - result.notification_attributes.delivery_topic == topic_info.results[2].sns_arn
+      - result.notification_attributes.headers_in_delivery_notifications_enabled ==
+        True
+      - result.notification_attributes.complaint_topic == topic_info.results[1].sns_arn
+      - result.notification_attributes.headers_in_complaint_notifications_enabled
+        == True
+      - result.notification_attributes.forwarding_enabled == False
+  - name: re-register base email identity
+    register: result
+    ansible.amazon.aws_ses_identity:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      identity: '{{ email_identity }}'
+      state: present
+  - name: assert no change since notifications were check mode
+    assert:
+      that:
+      - result.changed == False
+      - '''bounce_topic'' not in result.notification_attributes'
+      - result.notification_attributes.headers_in_bounce_notifications_enabled ==
+        False
+      - '''delivery_topic'' not in result.notification_attributes'
+      - result.notification_attributes.headers_in_delivery_notifications_enabled ==
+        False
+      - '''complaint_topic'' not in result.notification_attributes'
+      - result.notification_attributes.headers_in_complaint_notifications_enabled
+        == False
+      - result.notification_attributes.forwarding_enabled == True
+  always:
+  - name: cleanup topics
+    with_items:
+    - bounce
+    - complaint
+    - delivery
+    ansible.amazon.sns_topic:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ notification_queue_name }}-{{ item }}'
+      state: absent
+  - name: cleanup email identity
+    ansible.amazon.aws_ses_identity:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      identity: '{{ email_identity }}'
+      state: absent
+- name: test include headers on notification queues
+  block:
+  - name: register email identity
+    register: result
+    ansible.amazon.aws_ses_identity:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      identity: '{{ email_identity }}'
+      state: present
+      bounce_notifications:
+        include_headers: true
+      complaint_notifications:
+        include_headers: true
+      delivery_notifications:
+        include_headers: true
+  - name: assert notification headers enabled
+    assert:
+      that:
+      - result.notification_attributes.headers_in_bounce_notifications_enabled ==
+        True
+      - result.notification_attributes.headers_in_complaint_notifications_enabled
+        == True
+      - result.notification_attributes.headers_in_delivery_notifications_enabled ==
+        True
+  always:
+  - name: cleanup email identity
+    ansible.amazon.aws_ses_identity:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      identity: '{{ email_identity }}'
+      state: absent
+- name: test disable feedback forwarding
+  block:
+  - name: test topic
+    register: topic_info
+    with_items:
+    - bounce
+    - complaint
+    ansible.amazon.sns_topic:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ notification_queue_name }}-{{ item }}'
+      state: present
+  - name: register email identity
+    register: result
+    ansible.amazon.aws_ses_identity:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      identity: '{{ email_identity }}'
+      state: present
+      bounce_notifications:
+        topic: '{{ topic_info.results[0].sns_arn }}'
+      complaint_notifications:
+        topic: '{{ topic_info.results[1].sns_arn }}'
+      feedback_forwarding: false
+  - name: assert feedback_forwarding == False
+    assert:
+      that:
+      - result.notification_attributes.forwarding_enabled == False
+  always:
+  - name: cleanup topics
+    with_items:
+    - bounce
+    - complaint
+    ansible.amazon.sns_topic:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ notification_queue_name }}-{{ item }}'
+      state: absent
+  - name: cleanup email identity
+    ansible.amazon.aws_ses_identity:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      identity: '{{ email_identity }}'
+      state: absent
+- name: test disable feedback forwarding fails if no topics
+  block:
+  - name: register identity
+    register: result
+    failed_when: result.failed == False
+    ansible.amazon.aws_ses_identity:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      identity: '{{ domain_identity }}'
+      state: present
+      feedback_forwarding: false
+  - name: assert error message starts with "Invalid Parameter Value"
+    assert:
+      that:
+      - '"Invalid Parameter Value" in result.msg'
+  always:
+  - name: cleanup identity
+    ansible.amazon.aws_ses_identity:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      identity: '{{ domain_identity }}'
+      state: absent
+- name: test disable feedback forwarding fails if no complaint topic
+  block:
+  - name: test topic
+    register: topic_info
+    ansible.amazon.sns_topic:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ notification_queue_name }}-bounce'
+      state: present
+  - name: register email identity
+    register: result
+    failed_when: result.failed == False
+    ansible.amazon.aws_ses_identity:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      identity: '{{ email_identity }}'
+      state: present
+      bounce_notifications:
+        topic: '{{ topic_info.sns_arn }}'
+      feedback_forwarding: false
+  - name: assert error message starts with "Invalid Parameter Value"
+    assert:
+      that:
+      - '"Invalid Parameter Value" in result.msg'
+  always:
+  - name: cleanup topics
+    ansible.amazon.sns_topic:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ notification_queue_name }}-bounce'
+      state: absent
+  - name: cleanup identity
+    ansible.amazon.aws_ses_identity:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      identity: '{{ email_identity }}'
+      state: absent
+- name: test disable feedback forwarding fails if no bounce topic
+  block:
+  - name: test topic
+    register: topic_info
+    ansible.amazon.sns_topic:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ notification_queue_name }}-complaint'
+      state: present
+  - name: register email identity
+    register: result
+    failed_when: result.failed == False
+    ansible.amazon.aws_ses_identity:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      identity: '{{ email_identity }}'
+      state: present
+      complaint_notifications:
+        topic: '{{ topic_info.sns_arn }}'
+      feedback_forwarding: false
+  - name: assert error message starts with "Invalid Parameter Value"
+    assert:
+      that:
+      - '"Invalid Parameter Value" in result.msg'
+  always:
+  - name: cleanup topics
+    ansible.amazon.sns_topic:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ notification_queue_name }}-complaint'
+      state: absent
+  - name: cleanup identity
+    ansible.amazon.aws_ses_identity:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      identity: '{{ email_identity }}'
+      state: absent

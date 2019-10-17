@@ -1,0 +1,192 @@
+- set_fact:
+    zone_one: '{{ resource_prefix | replace("-", "") }}.one.fakeansible.com.'
+    zone_two: '{{ resource_prefix | replace("-", "") }}.two.fakeansible.com.'
+- debug: msg='Set zones {{ zone_one }} and {{ zone_two }}'
+- name: Test basics (new zone, A and AAAA records)
+  module_defaults:
+    group/aws:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+    ansible.amazon.route53:
+      region: null
+  block:
+  - register: z1
+    ansible.amazon.route53_zone:
+      zone: '{{ zone_one }}'
+      comment: Created in Ansible test {{ resource_prefix }}
+  - debug: msg='TODO write tests'
+  - debug: var=z1
+  - name: Create A record using zone fqdn
+    register: qdn
+    ansible.amazon.route53:
+      state: present
+      zone: '{{ zone_one }}'
+      record: qdn_test.{{ zone_one }}
+      type: A
+      value: 1.2.3.4
+  - assert:
+      that:
+      - qdn is not failed
+      - qdn is changed
+  - name: Create same A record using zone non-qualified domain
+    register: non_qdn
+    ansible.amazon.route53:
+      state: present
+      zone: '{{ zone_one[:-1] }}'
+      record: qdn_test.{{ zone_one[:-1] }}
+      type: A
+      value: 1.2.3.4
+  - assert:
+      that:
+      - non_qdn is not failed
+      - non_qdn is not changed
+  - name: Create A record using zone ID
+    register: zid
+    ansible.amazon.route53:
+      state: present
+      hosted_zone_id: '{{ z1.zone_id }}'
+      record: zid_test.{{ zone_one }}
+      type: A
+      value: 1.2.3.4
+  - assert:
+      that:
+      - zid is not failed
+      - zid is changed
+  - name: Create a multi-value A record with values in different order
+    register: mv_a_record
+    ansible.amazon.route53:
+      state: present
+      zone: '{{ zone_one }}'
+      record: order_test.{{ zone_one }}
+      type: A
+      value:
+      - 4.5.6.7
+      - 1.2.3.4
+  - assert:
+      that:
+      - mv_a_record is not failed
+      - mv_a_record is changed
+  - name: Create same multi-value A record with values in different order
+    register: mv_a_record
+    ansible.amazon.route53:
+      state: present
+      zone: '{{ zone_one }}'
+      record: order_test.{{ zone_one }}
+      type: A
+      value:
+      - 4.5.6.7
+      - 1.2.3.4
+  - assert:
+      that:
+      - mv_a_record is not failed
+      - mv_a_record is not changed
+  - name: Remove a member from multi-value A record with values in different order
+    register: del_a_record
+    ignore_errors: true
+    ansible.amazon.route53:
+      state: present
+      zone: '{{ zone_one }}'
+      record: order_test.{{ zone_one }}
+      type: A
+      value:
+      - 4.5.6.7
+  - name: This should fail, because `overwrite` is false
+    assert:
+      that:
+      - del_a_record is failed
+  - name: Remove a member from multi-value A record with values in different order
+    register: del_a_record
+    ignore_errors: true
+    ansible.amazon.route53:
+      state: present
+      zone: '{{ zone_one }}'
+      record: order_test.{{ zone_one }}
+      overwrite: true
+      type: A
+      value:
+      - 4.5.6.7
+  - name: This should fail, because `overwrite` is false
+    assert:
+      that:
+      - del_a_record is not failed
+      - del_a_record is changed
+  - name: Create a LetsEncrypt CAA record
+    register: caa
+    ansible.amazon.route53:
+      state: present
+      zone: '{{ zone_one }}'
+      record: '{{ zone_one }}'
+      type: CAA
+      value:
+      - 0 issue "letsencrypt.org;"
+      - 0 issuewild "letsencrypt.org;"
+      overwrite: true
+  - assert:
+      that:
+      - caa is not failed
+      - caa is changed
+  - name: Re-create the same LetsEncrypt CAA record
+    register: caa
+    ansible.amazon.route53:
+      state: present
+      zone: '{{ zone_one }}'
+      record: '{{ zone_one }}'
+      type: CAA
+      value:
+      - 0 issue "letsencrypt.org;"
+      - 0 issuewild "letsencrypt.org;"
+      overwrite: true
+  - assert:
+      that:
+      - caa is not failed
+      - caa is not changed
+  - name: Re-create the same LetsEncrypt CAA record in opposite-order
+    register: caa
+    ansible.amazon.route53:
+      state: present
+      zone: '{{ zone_one }}'
+      record: '{{ zone_one }}'
+      type: CAA
+      value:
+      - 0 issuewild "letsencrypt.org;"
+      - 0 issue "letsencrypt.org;"
+      overwrite: true
+  - name: This should not be changed, as CAA records are not order sensitive
+    assert:
+      that:
+      - caa is not failed
+      - caa is not changed
+  always:
+  - register: z1_records
+    ansible.amazon.route53_info:
+      query: record_sets
+      hosted_zone_id: '{{ z1.zone_id }}'
+  - debug: var=z1_records
+  - name: Loop over A/AAAA/CNAME records and delete them
+    loop: '{{ z1_records.ResourceRecordSets | selectattr("Type", "in", ["A", "AAAA",
+      "CNAME", "CAA"]) | list }}'
+    ansible.amazon.route53:
+      state: absent
+      zone: '{{ zone_one }}'
+      record: '{{ item.Name }}'
+      type: '{{ item.Type }}'
+      value: '{{ item.ResourceRecords | map(attribute="Value") | join(",") }}'
+  - name: Delete test zone one '{{ zone_one }}'
+    register: delete_one
+    ignore_errors: true
+    retries: 10
+    until: delete_one is not failed
+    ansible.amazon.route53_zone:
+      state: absent
+      zone: '{{ zone_one }}'
+  - name: Delete test zone two '{{ zone_two }}'
+    register: delete_two
+    ignore_errors: true
+    retries: 10
+    until: delete_two is not failed
+    when: false
+    ansible.amazon.route53_zone:
+      state: absent
+      zone: '{{ zone_two }}'

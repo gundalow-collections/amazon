@@ -1,0 +1,23 @@
+- block:
+  - include: ./credential_tests.yml
+    tags: credentials
+  - include: ./test_states.yml
+    tags: states
+  - include: ./test_tags.yml
+    tags: tags
+  - include: ./test_modification.yml
+    tags: modification
+  - include: ./test_bad_options.yml
+    tags: bad_options
+  - include: ./test_processor_features.yml
+    tags: processor_features
+  - include: ./test_encryption.yml
+    tags: encryption
+  - include: ./test_final_snapshot.yml
+    tags: final_snapshot
+  - include: ./test_read_replica.yml
+    tags: read_replica
+  - include: ./test_vpc_security_groups.yml
+    tags: vpc_security_groups
+  - include: ./test_restore_instance.yml
+    tags: restore

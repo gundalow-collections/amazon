@@ -1,0 +1,67 @@
+- name: set up aws connection info
+  set_fact:
+    aws_connection_info:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+  no_log: true
+- name: Set lock_attempt_log_group_name
+  set_fact:
+    lock_attempt_log_group_name: '{{ lock_log_group_prefix }}/{{ lock_process_id|default(resource_prefix)
+      }}'
+- name: Create Lock Attempt Log Group
+  register: lock_attempt_log_group_result
+  ansible.amazon.cloudwatchlogs_log_group:
+    aws_access_key: '{{ aws_access_key }}'
+    aws_secret_key: '{{ aws_secret_key }}'
+    security_token: '{{ security_token }}'
+    region: '{{ aws_region }}'
+    log_group_name: '{{ lock_attempt_log_group_name }}'
+    state: present
+    overwrite: true
+- name: Get Lock Attempt Lock Groups
+  register: lock_attempt_log_groups
+  ansible.amazon.cloudwatchlogs_log_group_info:
+    aws_access_key: '{{ aws_access_key }}'
+    aws_secret_key: '{{ aws_secret_key }}'
+    security_token: '{{ security_token }}'
+    region: '{{ aws_region }}'
+    log_group_name: '{{ lock_log_group_prefix }}/'
+- name: Calculate Expired Lock Attempt Timestamp
+  set_fact:
+    expired_lock_timestamp: '{{ lock_attempt_log_group_result.creation_time - (lock_timeout_seconds
+      * 1000) }}'
+- name: Get Expired and Active Lock Attempts
+  set_fact:
+    expired_lock_attempts: '{{ lock_attempt_log_groups.log_groups|selectattr(''creation_time'',
+      ''lt'', expired_lock_timestamp|int)|list }}'
+    active_lock_attempts: '{{ lock_attempt_log_groups.log_groups|selectattr(''creation_time'',
+      ''ge'', expired_lock_timestamp|int)|list }}'
+- name: Pick Winning Lock Attempt
+  set_fact:
+    winning_lock_attempt: '{{ active_lock_attempts|sort(attribute=''creation_time'')|first
+      }}'
+- name: Determine if Won Lock
+  set_fact:
+    won_lock: '{{ winning_lock_attempt.log_group_name == lock_attempt_log_group_name
+      }}'
+- name: Remove Failed Lock Attempt Log Group
+  when: not won_lock|bool
+  ansible.amazon.cloudwatchlogs_log_group:
+    aws_access_key: '{{ aws_access_key }}'
+    aws_secret_key: '{{ aws_secret_key }}'
+    security_token: '{{ security_token }}'
+    region: '{{ aws_region }}'
+    log_group_name: '{{ lock_attempt_log_group_name }}'
+    state: absent
+- name: Delete Expired Lock Attempts
+  when: won_lock|bool
+  loop: '{{ expired_lock_attempts }}'
+  ansible.amazon.cloudwatchlogs_log_group:
+    aws_access_key: '{{ aws_access_key }}'
+    aws_secret_key: '{{ aws_secret_key }}'
+    security_token: '{{ security_token }}'
+    region: '{{ aws_region }}'
+    log_group_name: '{{ item.log_group_name }}'
+    state: absent

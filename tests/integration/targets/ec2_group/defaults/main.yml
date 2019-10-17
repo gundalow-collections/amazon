@@ -1,0 +1,2 @@
+ec2_group_name: '{{resource_prefix}}'
+ec2_group_description: Created by ansible integration tests

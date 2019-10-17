@@ -1,0 +1,201 @@
+- name: set up aws connection info
+  module_defaults:
+    group/aws:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token | default(omit) }}'
+      region: '{{ aws_region }}'
+  block:
+  - name: ensure improper usage of parameters fails gracefully
+    ignore_errors: true
+    register: iam_user_info_path_group
+    ansible.amazon.iam_user_info:
+      path: '{{ test_path }}'
+      group: '{{ test_group }}'
+  - assert:
+      that:
+      - iam_user_info_path_group is failed
+      - 'iam_user_info_path_group.msg == "parameters are mutually exclusive: group|path"'
+  - name: ensure exception handling fails as expected
+    ignore_errors: true
+    register: iam_user_info
+    ansible.amazon.iam_user_info:
+      region: bogus
+      path: ''
+  - assert:
+      that:
+      - iam_user_info is failed
+      - '"user" in iam_user_info.msg'
+  - name: ensure exception handling fails as expected with group
+    ignore_errors: true
+    register: iam_user_info
+    ansible.amazon.iam_user_info:
+      region: bogus
+      group: '{{ test_group }}'
+  - assert:
+      that:
+      - iam_user_info is failed
+      - '"group" in iam_user_info.msg'
+  - name: ensure exception handling fails as expected with default path
+    ignore_errors: true
+    register: iam_user_info
+    ansible.amazon.iam_user_info:
+      region: bogus
+  - assert:
+      that:
+      - iam_user_info is failed
+      - '"path" in iam_user_info.msg'
+  - name: ensure ansible user exists
+    register: iam_user
+    ansible.amazon.iam_user:
+      name: '{{ test_user }}'
+      state: present
+  - name: ensure the info used to validate other tests is valid
+    set_fact:
+      test_iam_user: '{{ iam_user.iam_user.user }}'
+  - assert:
+      that:
+      - test_iam_user.arn.startswith("arn:aws:iam")
+      - test_iam_user.arn.endswith("user/" + test_user )
+      - test_iam_user.create_date is not none
+      - test_iam_user.path == '{{ test_path }}'
+      - test_iam_user.user_id is not none
+      - test_iam_user.user_name == '{{ test_user }}'
+  - name: get info on IAM user(s)
+    register: iam_user_info
+    ansible.amazon.iam_user_info: null
+  - assert:
+      that:
+      - iam_user_info.iam_users | length != 0
+  - name: get info on IAM user(s) with name
+    register: iam_user_info
+    ansible.amazon.iam_user_info:
+      name: '{{ test_user }}'
+  - debug: var=iam_user_info
+  - assert:
+      that:
+      - iam_user_info.iam_users | length == 1
+      - iam_user_info.iam_users[0].arn == test_iam_user.arn
+      - iam_user_info.iam_users[0].create_date == test_iam_user.create_date
+      - iam_user_info.iam_users[0].path == test_iam_user.path
+      - iam_user_info.iam_users[0].user_id == test_iam_user.user_id
+      - iam_user_info.iam_users[0].user_name == test_iam_user.user_name
+  - name: get info on IAM user(s) on path
+    register: iam_user_info
+    ansible.amazon.iam_user_info:
+      path: '{{ test_path }}'
+      name: '{{ test_user }}'
+  - assert:
+      that:
+      - iam_user_info.iam_users | length == 1
+      - iam_user_info.iam_users[0].arn == test_iam_user.arn
+      - iam_user_info.iam_users[0].create_date == test_iam_user.create_date
+      - iam_user_info.iam_users[0].path == test_iam_user.path
+      - iam_user_info.iam_users[0].user_id == test_iam_user.user_id
+      - iam_user_info.iam_users[0].user_name == test_iam_user.user_name
+  - name: ensure group exists
+    register: iam_group
+    ansible.amazon.iam_group:
+      name: '{{ test_group }}'
+      users:
+      - '{{ test_user }}'
+      state: present
+  - name: get info on IAM user(s) in group
+    register: iam_user_info
+    ansible.amazon.iam_user_info:
+      group: '{{ test_group }}'
+      name: '{{ test_user }}'
+  - assert:
+      that:
+      - iam_user_info.iam_users | length == 1
+      - iam_user_info.iam_users[0].arn == test_iam_user.arn
+      - iam_user_info.iam_users[0].create_date == test_iam_user.create_date
+      - iam_user_info.iam_users[0].path == test_iam_user.path
+      - iam_user_info.iam_users[0].user_id == test_iam_user.user_id
+      - iam_user_info.iam_users[0].user_name == test_iam_user.user_name
+  - name: remove user from group
+    register: iam_group
+    ansible.amazon.iam_group:
+      name: '{{ test_group }}'
+      purge_users: true
+      users: []
+      state: present
+  - name: get info on IAM user(s) after removing from group
+    register: iam_user_info
+    ansible.amazon.iam_user_info:
+      group: '{{ test_group }}'
+      name: '{{ test_user }}'
+  - name: assert empty list of users for group are returned
+    assert:
+      that:
+      - iam_user_info.iam_users | length == 0
+  - name: ensure ansible users exist
+    with_items: '{{ test_users }}'
+    ansible.amazon.iam_user:
+      name: '{{ item }}'
+      state: present
+  - name: get info on multiple IAM user(s)
+    register: iam_user_info
+    ansible.amazon.iam_user_info: null
+  - assert:
+      that:
+      - iam_user_info.iam_users | length != 0
+  - name: ensure multiple user group exists with single user
+    register: iam_group
+    ansible.amazon.iam_group:
+      name: '{{ test_group }}'
+      users:
+      - '{{ test_user }}'
+      state: present
+  - name: get info on IAM user(s) in group
+    register: iam_user_info
+    ansible.amazon.iam_user_info:
+      group: '{{ test_group }}'
+  - assert:
+      that:
+      - iam_user_info.iam_users | length == 1
+  - name: add all users to group
+    register: iam_group
+    ansible.amazon.iam_group:
+      name: '{{ test_group }}'
+      users: '{{ test_users }}'
+      state: present
+  - name: get info on multiple IAM user(s) in group
+    register: iam_user_info
+    ansible.amazon.iam_user_info:
+      group: '{{ test_group }}'
+  - assert:
+      that:
+      - iam_user_info.iam_users | length == test_users | length
+  - name: purge users from group
+    register: iam_group
+    ansible.amazon.iam_group:
+      name: '{{ test_group }}'
+      purge_users: true
+      users: []
+      state: present
+  - name: ensure info is empty for empty group
+    register: iam_user_info
+    ansible.amazon.iam_user_info:
+      group: '{{ test_group }}'
+  - assert:
+      that:
+      - iam_user_info.iam_users | length == 0
+  - name: get info on IAM user(s) after removing from group
+    register: iam_user_info
+    ansible.amazon.iam_user_info:
+      group: '{{ test_group }}'
+  - name: assert empty list of users for group are returned
+    assert:
+      that:
+      - iam_user_info.iam_users | length == 0
+  always:
+  - name: remove group
+    ansible.amazon.iam_group:
+      name: '{{ test_group }}'
+      state: absent
+  - name: remove ansible users
+    with_items: '{{ test_users }}'
+    ansible.amazon.iam_user:
+      name: '{{ item }}'
+      state: absent

@@ -1,0 +1,465 @@
+- block:
+  - name: set aws_connection_info fact
+    set_fact:
+      aws_connection_info:
+        aws_region: '{{aws_region}}'
+        aws_access_key: '{{aws_access_key}}'
+        aws_secret_key: '{{aws_secret_key}}'
+        security_token: '{{security_token}}'
+    no_log: true
+  - name: create a VPC to work in
+    register: setup_vpc
+    ansible.amazon.ec2_vpc_net:
+      aws_region: '{{aws_region}}'
+      aws_access_key: '{{aws_access_key}}'
+      aws_secret_key: '{{aws_secret_key}}'
+      security_token: '{{security_token}}'
+      cidr_block: 10.0.0.0/24
+      state: present
+      name: '{{ ec2_ami_name }}_setup'
+      resource_tags:
+        Name: '{{ ec2_ami_name }}_setup'
+  - name: create a key pair to use for creating an ec2 instance
+    register: setup_key
+    ansible.amazon.ec2_key:
+      aws_region: '{{aws_region}}'
+      aws_access_key: '{{aws_access_key}}'
+      aws_secret_key: '{{aws_secret_key}}'
+      security_token: '{{security_token}}'
+      name: '{{ ec2_ami_name }}_setup'
+      state: present
+  - name: create a subnet to use for creating an ec2 instance
+    register: setup_subnet
+    ansible.amazon.ec2_vpc_subnet:
+      aws_region: '{{aws_region}}'
+      aws_access_key: '{{aws_access_key}}'
+      aws_secret_key: '{{aws_secret_key}}'
+      security_token: '{{security_token}}'
+      az: '{{ ec2_region }}a'
+      tags: '{{ ec2_ami_name }}_setup'
+      vpc_id: '{{ setup_vpc.vpc.id }}'
+      cidr: 10.0.0.0/24
+      state: present
+      resource_tags:
+        Name: '{{ ec2_ami_name }}_setup'
+  - name: create a security group to use for creating an ec2 instance
+    register: setup_sg
+    ansible.amazon.ec2_group:
+      aws_region: '{{aws_region}}'
+      aws_access_key: '{{aws_access_key}}'
+      aws_secret_key: '{{aws_secret_key}}'
+      security_token: '{{security_token}}'
+      name: '{{ ec2_ami_name }}_setup'
+      description: created by Ansible integration tests
+      state: present
+      vpc_id: '{{ setup_vpc.vpc.id }}'
+  - name: provision ec2 instance to create an image
+    register: setup_instance
+    ansible.amazon.ec2:
+      aws_region: '{{aws_region}}'
+      aws_access_key: '{{aws_access_key}}'
+      aws_secret_key: '{{aws_secret_key}}'
+      security_token: '{{security_token}}'
+      key_name: '{{ setup_key.key.name }}'
+      instance_type: t2.micro
+      state: present
+      image: '{{ ec2_region_images[ec2_region] }}'
+      wait: true
+      instance_tags:
+        '{{ec2_ami_name}}_instance_setup': integration_tests
+      group_id: '{{ setup_sg.group_id }}'
+      vpc_subnet_id: '{{ setup_subnet.subnet.id }}'
+  - name: take a snapshot of the instance to create an image
+    register: setup_snapshot
+    ansible.amazon.ec2_snapshot:
+      aws_region: '{{aws_region}}'
+      aws_access_key: '{{aws_access_key}}'
+      aws_secret_key: '{{aws_secret_key}}'
+      security_token: '{{security_token}}'
+      instance_id: '{{ setup_instance.instance_ids[0] }}'
+      device_name: /dev/xvda
+      state: present
+  - name: test clean failure if not providing image_id or name with state=present
+    register: result
+    ignore_errors: true
+    ansible.amazon.ec2_ami:
+      aws_region: '{{aws_region}}'
+      aws_access_key: '{{aws_access_key}}'
+      aws_secret_key: '{{aws_secret_key}}'
+      security_token: '{{security_token}}'
+      instance_id: '{{ setup_instance.instance_ids[0] }}'
+      state: present
+      description: '{{ ec2_ami_description }}'
+      tags:
+        Name: '{{ ec2_ami_name }}_ami'
+      wait: true
+      root_device_name: /dev/xvda
+  - name: assert error message is helpful
+    assert:
+      that:
+      - result.failed
+      - 'result.msg == ''one of the following is required: name, image_id'''
+  - name: create an image from the instance
+    register: result
+    ansible.amazon.ec2_ami:
+      aws_region: '{{aws_region}}'
+      aws_access_key: '{{aws_access_key}}'
+      aws_secret_key: '{{aws_secret_key}}'
+      security_token: '{{security_token}}'
+      instance_id: '{{ setup_instance.instance_ids[0] }}'
+      state: present
+      name: '{{ ec2_ami_name }}_ami'
+      description: '{{ ec2_ami_description }}'
+      tags:
+        Name: '{{ ec2_ami_name }}_ami'
+      wait: true
+      root_device_name: /dev/xvda
+  - name: set image id fact for deletion later
+    set_fact:
+      ec2_ami_image_id: '{{ result.image_id }}'
+  - name: assert that image has been created
+    assert:
+      that:
+      - result.changed
+      - result.image_id.startswith('ami-')
+      - '''Name'' in result.tags and result.tags.Name == ec2_ami_name + ''_ami'''
+  - name: gather facts about the image created
+    register: ami_facts_result
+    ignore_errors: true
+    ansible.amazon.ec2_ami_info:
+      aws_region: '{{aws_region}}'
+      aws_access_key: '{{aws_access_key}}'
+      aws_secret_key: '{{aws_secret_key}}'
+      security_token: '{{security_token}}'
+      image_ids: '{{ ec2_ami_image_id }}'
+  - name: assert that the right image was found
+    assert:
+      that:
+      - ami_facts_result.images[0].image_id == ec2_ami_image_id
+  - name: delete the image
+    ignore_errors: true
+    register: result
+    ansible.amazon.ec2_ami:
+      aws_region: '{{aws_region}}'
+      aws_access_key: '{{aws_access_key}}'
+      aws_secret_key: '{{aws_secret_key}}'
+      security_token: '{{security_token}}'
+      instance_id: '{{ setup_instance.instance_ids[0] }}'
+      state: absent
+      delete_snapshot: true
+      name: '{{ ec2_ami_name }}_ami'
+      description: '{{ ec2_ami_description }}'
+      image_id: '{{ result.image_id }}'
+      tags:
+        Name: '{{ ec2_ami_name }}_ami'
+      wait: true
+  - name: assert that the image has been deleted
+    assert:
+      that:
+      - result.changed
+      - '''image_id'' not in result'
+      - result.snapshots_deleted
+  - name: test removing an ami if no image ID is provided (expected failed=true)
+    register: result
+    ignore_errors: true
+    ansible.amazon.ec2_ami:
+      aws_region: '{{aws_region}}'
+      aws_access_key: '{{aws_access_key}}'
+      aws_secret_key: '{{aws_secret_key}}'
+      security_token: '{{security_token}}'
+      state: absent
+  - name: assert that an image ID is required
+    assert:
+      that:
+      - result.failed
+      - 'result.msg == ''state is absent but all of the following are missing: image_id'''
+  - name: create an image from the snapshot
+    register: result
+    ignore_errors: true
+    ansible.amazon.ec2_ami:
+      aws_region: '{{aws_region}}'
+      aws_access_key: '{{aws_access_key}}'
+      aws_secret_key: '{{aws_secret_key}}'
+      security_token: '{{security_token}}'
+      name: '{{ ec2_ami_name }}_ami'
+      description: '{{ ec2_ami_description }}'
+      state: present
+      launch_permissions:
+        user_ids: []
+      tags:
+        Name: '{{ ec2_ami_name }}_ami'
+      root_device_name: /dev/xvda
+      device_mapping:
+      - device_name: /dev/xvda
+        volume_type: gp2
+        size: 8
+        delete_on_termination: true
+        snapshot_id: '{{ setup_snapshot.snapshot_id }}'
+  - name: set image id fact for deletion later
+    set_fact:
+      ec2_ami_image_id: '{{ result.image_id }}'
+      ec2_ami_snapshot: '{{ result.block_device_mapping[''/dev/xvda''].snapshot_id
+        }}'
+  - name: assert a new ami has been created
+    assert:
+      that:
+      - result.changed
+      - result.image_id.startswith('ami-')
+  - name: test default launch permissions idempotence
+    register: result
+    ansible.amazon.ec2_ami:
+      aws_region: '{{aws_region}}'
+      aws_access_key: '{{aws_access_key}}'
+      aws_secret_key: '{{aws_secret_key}}'
+      security_token: '{{security_token}}'
+      description: '{{ ec2_ami_description }}'
+      state: present
+      name: '{{ ec2_ami_name }}_ami'
+      tags:
+        Name: '{{ ec2_ami_name }}_ami'
+      root_device_name: /dev/xvda
+      image_id: '{{ result.image_id }}'
+      launch_permissions:
+        user_ids: []
+      device_mapping:
+      - device_name: /dev/xvda
+        volume_type: gp2
+        size: 8
+        delete_on_termination: true
+        snapshot_id: '{{ setup_snapshot.snapshot_id }}'
+  - name: assert a new ami has not been created
+    assert:
+      that:
+      - not result.changed
+      - result.image_id.startswith('ami-')
+  - name: add a tag to the AMI
+    register: result
+    ansible.amazon.ec2_ami:
+      aws_region: '{{aws_region}}'
+      aws_access_key: '{{aws_access_key}}'
+      aws_secret_key: '{{aws_secret_key}}'
+      security_token: '{{security_token}}'
+      state: present
+      description: '{{ ec2_ami_description }}'
+      image_id: '{{ result.image_id }}'
+      name: '{{ ec2_ami_name }}_ami'
+      tags:
+        New: Tag
+  - name: assert a tag was added
+    assert:
+      that:
+      - '''Name'' in result.tags and result.tags.Name == ec2_ami_name + ''_ami'''
+      - '''New'' in result.tags and result.tags.New == ''Tag'''
+  - name: use purge_tags to remove a tag from the AMI
+    register: result
+    ansible.amazon.ec2_ami:
+      aws_region: '{{aws_region}}'
+      aws_access_key: '{{aws_access_key}}'
+      aws_secret_key: '{{aws_secret_key}}'
+      security_token: '{{security_token}}'
+      state: present
+      description: '{{ ec2_ami_description }}'
+      image_id: '{{ result.image_id }}'
+      name: '{{ ec2_ami_name }}_ami'
+      tags:
+        New: Tag
+      purge_tags: true
+  - name: assert a tag was removed
+    assert:
+      that:
+      - '''Name'' not in result.tags'
+      - '''New'' in result.tags and result.tags.New == ''Tag'''
+  - name: update AMI launch permissions
+    register: result
+    ansible.amazon.ec2_ami:
+      aws_region: '{{aws_region}}'
+      aws_access_key: '{{aws_access_key}}'
+      aws_secret_key: '{{aws_secret_key}}'
+      security_token: '{{security_token}}'
+      state: present
+      image_id: '{{ result.image_id }}'
+      description: '{{ ec2_ami_description }}'
+      tags:
+        Name: '{{ ec2_ami_name }}_ami'
+      launch_permissions:
+        group_names:
+        - all
+  - name: assert launch permissions were updated
+    assert:
+      that:
+      - result.changed
+  - name: modify the AMI description
+    register: result
+    ansible.amazon.ec2_ami:
+      aws_region: '{{aws_region}}'
+      aws_access_key: '{{aws_access_key}}'
+      aws_secret_key: '{{aws_secret_key}}'
+      security_token: '{{security_token}}'
+      state: present
+      image_id: '{{ result.image_id }}'
+      name: '{{ ec2_ami_name }}_ami'
+      description: '{{ ec2_ami_description }}CHANGED'
+      tags:
+        Name: '{{ ec2_ami_name }}_ami'
+      launch_permissions:
+        group_names:
+        - all
+  - name: assert the description changed
+    assert:
+      that:
+      - result.changed
+  - name: remove public launch permissions
+    register: result
+    ansible.amazon.ec2_ami:
+      aws_region: '{{aws_region}}'
+      aws_access_key: '{{aws_access_key}}'
+      aws_secret_key: '{{aws_secret_key}}'
+      security_token: '{{security_token}}'
+      state: present
+      image_id: '{{ result.image_id }}'
+      name: '{{ ec2_ami_name }}_ami'
+      tags:
+        Name: '{{ ec2_ami_name }}_ami'
+      launch_permissions:
+        group_names: []
+  - name: assert launch permissions were updated
+    assert:
+      that:
+      - result.changed
+  - name: delete ami without deleting the snapshot (default is not to delete)
+    ignore_errors: true
+    register: result
+    ansible.amazon.ec2_ami:
+      aws_region: '{{aws_region}}'
+      aws_access_key: '{{aws_access_key}}'
+      aws_secret_key: '{{aws_secret_key}}'
+      security_token: '{{security_token}}'
+      instance_id: '{{ setup_instance.instance_ids[0] }}'
+      state: absent
+      name: '{{ ec2_ami_name }}_ami'
+      image_id: '{{ ec2_ami_image_id }}'
+      tags:
+        Name: '{{ ec2_ami_name }}_ami'
+      wait: true
+  - name: assert that the image has been deleted
+    assert:
+      that:
+      - result.changed
+      - '''image_id'' not in result'
+  - name: ensure the snapshot still exists
+    register: snapshot_result
+    ansible.amazon.ec2_snapshot_info:
+      aws_region: '{{aws_region}}'
+      aws_access_key: '{{aws_access_key}}'
+      aws_secret_key: '{{aws_secret_key}}'
+      security_token: '{{security_token}}'
+      snapshot_ids:
+      - '{{ ec2_ami_snapshot }}'
+  - name: assert the snapshot wasn't deleted
+    assert:
+      that:
+      - snapshot_result.snapshots[0].snapshot_id == ec2_ami_snapshot
+  - name: delete ami for a second time
+    register: result
+    ansible.amazon.ec2_ami:
+      aws_region: '{{aws_region}}'
+      aws_access_key: '{{aws_access_key}}'
+      aws_secret_key: '{{aws_secret_key}}'
+      security_token: '{{security_token}}'
+      instance_id: '{{ setup_instance.instance_ids[0] }}'
+      state: absent
+      name: '{{ ec2_ami_name }}_ami'
+      image_id: '{{ ec2_ami_image_id }}'
+      tags:
+        Name: '{{ ec2_ami_name }}_ami'
+      wait: true
+  - name: assert that image does not exist
+    assert:
+      that:
+      - not result.changed
+      - not result.failed
+  always:
+  - name: Announce teardown start
+    debug:
+      msg: '***** TESTING COMPLETE. COMMENCE TEARDOWN *****'
+  - name: delete ami
+    ignore_errors: true
+    ansible.amazon.ec2_ami:
+      aws_region: '{{aws_region}}'
+      aws_access_key: '{{aws_access_key}}'
+      aws_secret_key: '{{aws_secret_key}}'
+      security_token: '{{security_token}}'
+      state: absent
+      image_id: '{{ ec2_ami_image_id }}'
+      name: '{{ ec2_ami_name }}_ami'
+      wait: true
+  - name: remove setup snapshot of ec2 instance
+    ignore_errors: true
+    ansible.amazon.ec2_snapshot:
+      aws_region: '{{aws_region}}'
+      aws_access_key: '{{aws_access_key}}'
+      aws_secret_key: '{{aws_secret_key}}'
+      security_token: '{{security_token}}'
+      state: absent
+      snapshot_id: '{{ setup_snapshot.snapshot_id }}'
+  - name: remove setup ec2 instance
+    ignore_errors: true
+    ansible.amazon.ec2:
+      aws_region: '{{aws_region}}'
+      aws_access_key: '{{aws_access_key}}'
+      aws_secret_key: '{{aws_secret_key}}'
+      security_token: '{{security_token}}'
+      instance_type: t2.micro
+      instance_ids: '{{ setup_instance.instance_ids }}'
+      state: absent
+      wait: true
+      instance_tags:
+        '{{ec2_ami_name}}_instance_setup': integration_tests
+      group_id: '{{ setup_sg.group_id }}'
+      vpc_subnet_id: '{{ setup_subnet.subnet.id }}'
+  - name: remove setup keypair
+    ignore_errors: true
+    ansible.amazon.ec2_key:
+      aws_region: '{{aws_region}}'
+      aws_access_key: '{{aws_access_key}}'
+      aws_secret_key: '{{aws_secret_key}}'
+      security_token: '{{security_token}}'
+      name: '{{ec2_ami_name}}_setup'
+      state: absent
+  - name: remove setup security group
+    ignore_errors: true
+    ansible.amazon.ec2_group:
+      aws_region: '{{aws_region}}'
+      aws_access_key: '{{aws_access_key}}'
+      aws_secret_key: '{{aws_secret_key}}'
+      security_token: '{{security_token}}'
+      name: '{{ ec2_ami_name }}_setup'
+      description: created by Ansible integration tests
+      state: absent
+      vpc_id: '{{ setup_vpc.vpc.id }}'
+  - name: remove setup subnet
+    ignore_errors: true
+    ansible.amazon.ec2_vpc_subnet:
+      aws_region: '{{aws_region}}'
+      aws_access_key: '{{aws_access_key}}'
+      aws_secret_key: '{{aws_secret_key}}'
+      security_token: '{{security_token}}'
+      az: '{{ ec2_region }}a'
+      tags: '{{ec2_ami_name}}_setup'
+      vpc_id: '{{ setup_vpc.vpc.id }}'
+      cidr: 10.0.0.0/24
+      state: absent
+      resource_tags:
+        Name: '{{ ec2_ami_name }}_setup'
+  - name: remove setup VPC
+    ignore_errors: true
+    ansible.amazon.ec2_vpc_net:
+      aws_region: '{{aws_region}}'
+      aws_access_key: '{{aws_access_key}}'
+      aws_secret_key: '{{aws_secret_key}}'
+      security_token: '{{security_token}}'
+      cidr_block: 10.0.0.0/24
+      state: absent
+      name: '{{ ec2_ami_name }}_setup'
+      resource_tags:
+        Name: '{{ ec2_ami_name }}_setup'

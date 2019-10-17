@@ -1,0 +1,90 @@
+- block:
+  - name: set up aws connection info
+    set_fact:
+      aws_connection_info:
+        aws_access_key: '{{ aws_access_key }}'
+        aws_secret_key: '{{ aws_secret_key }}'
+        security_token: '{{ security_token }}'
+        region: '{{ aws_region }}'
+    no_log: true
+  - name: create glue connection
+    register: result
+    ansible.amazon.aws_glue_connection:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ resource_prefix }}'
+      connection_properties:
+        JDBC_CONNECTION_URL: jdbc:mysql://mydb:3306/{{ resource_prefix }}
+        USERNAME: my-username
+        PASSWORD: my-password
+      state: present
+  - assert:
+      that:
+      - result.changed
+  - name: test idempotence creating glue connection
+    register: result
+    ansible.amazon.aws_glue_connection:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ resource_prefix }}'
+      connection_properties:
+        JDBC_CONNECTION_URL: jdbc:mysql://mydb:3306/{{ resource_prefix }}
+        USERNAME: my-username
+        PASSWORD: my-password
+      state: present
+  - assert:
+      that:
+      - not result.changed
+  - name: test updating JDBC connection url
+    register: result
+    ansible.amazon.aws_glue_connection:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ resource_prefix }}'
+      connection_properties:
+        JDBC_CONNECTION_URL: jdbc:mysql://mydb:3306/{{ resource_prefix }}-updated
+        USERNAME: my-username
+        PASSWORD: my-password
+      state: present
+  - assert:
+      that:
+      - result.changed
+  - name: delete glue connection
+    register: result
+    ansible.amazon.aws_glue_connection:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ resource_prefix }}'
+      state: absent
+  - assert:
+      that:
+      - result.changed
+  - name: test idempotence removing glue connection
+    register: result
+    ansible.amazon.aws_glue_connection:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ resource_prefix }}'
+      state: absent
+  - assert:
+      that:
+      - not result.changed
+  always:
+  - name: delete glue connection
+    ansible.amazon.aws_glue_connection:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ resource_prefix }}'
+      state: absent

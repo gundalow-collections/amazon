@@ -1,0 +1,73 @@
+- block:
+  - name: set connection information for all tasks
+    set_fact:
+      aws_connection_info:
+        aws_access_key: '{{ aws_access_key }}'
+        aws_secret_key: '{{ aws_secret_key }}'
+        security_token: '{{ security_token }}'
+        region: '{{ aws_region }}'
+    no_log: true
+  - name: test creating an NLB with invalid listener options
+    ignore_errors: true
+    register: nlb
+    ansible.amazon.elb_network_lb:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ nlb_name }}'
+      subnets: '{{ nlb_subnets }}'
+      state: present
+      listeners:
+      - Protocol: TCP
+        Port: 80
+        Certificates:
+          CertificateArn: test
+          IsDefault: 'True'
+        DefaultActions:
+        - Type: forward
+          TargetGroupName: '{{ tg_name }}'
+  - assert:
+      that:
+      - nlb is failed
+      - '''unable to convert to list'' in nlb.msg'
+  - name: test creating an NLB without providing required listener options
+    ignore_errors: true
+    register: nlb
+    ansible.amazon.elb_network_lb:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ nlb_name }}'
+      subnets: '{{ nlb_subnets }}'
+      state: present
+      listeners:
+      - Port: 80
+  - assert:
+      that:
+      - nlb is failed
+      - '"missing required arguments" in nlb.msg'
+      - '"Protocol" in nlb.msg'
+      - '"DefaultActions" in nlb.msg'
+  - name: test creating an NLB providing an invalid listener option type
+    ignore_errors: true
+    register: nlb
+    ansible.amazon.elb_network_lb:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ nlb_name }}'
+      subnets: '{{ nlb_subnets }}'
+      state: present
+      listeners:
+      - Protocol: TCP
+        Port: bad type
+        DefaultActions:
+        - Type: forward
+          TargetGroupName: '{{ tg_name }}'
+  - assert:
+      that:
+      - nlb is failed
+      - '''unable to convert to int'' in nlb.msg'

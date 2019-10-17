@@ -1,0 +1,184 @@
+- block:
+  - name: set connection information for all tasks
+    set_fact:
+      aws_connection_info:
+        aws_access_key: '{{ aws_access_key }}'
+        aws_secret_key: '{{ aws_secret_key }}'
+        security_token: '{{ security_token }}'
+        region: '{{ aws_region }}'
+    no_log: true
+  - name: add a rule to the listener
+    register: alb
+    ansible.amazon.elb_application_lb:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ alb_name }}'
+      subnets: '{{ alb_subnets }}'
+      security_groups: '{{ sec_group.group_id }}'
+      state: present
+      listeners:
+      - Protocol: HTTP
+        Port: 80
+        DefaultActions:
+        - Type: forward
+          TargetGroupName: '{{ tg_name }}'
+        Rules:
+        - Conditions:
+          - Field: path-pattern
+            Values:
+            - /test
+          Priority: '1'
+          Actions:
+          - TargetGroupName: '{{ tg_name }}'
+            Type: forward
+  - assert:
+      that:
+      - alb.changed
+      - alb.listeners[0].rules|length == 2
+  - name: test replacing the rule with one with the same priority
+    register: alb
+    ansible.amazon.elb_application_lb:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ alb_name }}'
+      subnets: '{{ alb_subnets }}'
+      security_groups: '{{ sec_group.group_id }}'
+      state: present
+      purge_listeners: true
+      listeners:
+      - Protocol: HTTP
+        Port: 80
+        DefaultActions:
+        - Type: forward
+          TargetGroupName: '{{ tg_name }}'
+        Rules:
+        - Conditions:
+          - Field: path-pattern
+            Values:
+            - /new
+          Priority: '1'
+          Actions:
+          - TargetGroupName: '{{ tg_name }}'
+            Type: forward
+  - assert:
+      that:
+      - alb.changed
+      - alb.listeners[0].rules|length == 2
+  - name: test the rule will not be removed without purge_listeners
+    register: alb
+    ansible.amazon.elb_application_lb:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ alb_name }}'
+      subnets: '{{ alb_subnets }}'
+      security_groups: '{{ sec_group.group_id }}'
+      state: present
+      listeners:
+      - Protocol: HTTP
+        Port: 80
+        DefaultActions:
+        - Type: forward
+          TargetGroupName: '{{ tg_name }}'
+  - assert:
+      that:
+      - not alb.changed
+      - alb.listeners[0].rules|length == 2
+  - name: test a rule can be added and other rules will not be removed when purge_rules
+      is no.
+    register: alb
+    ansible.amazon.elb_application_lb:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ alb_name }}'
+      subnets: '{{ alb_subnets }}'
+      security_groups: '{{ sec_group.group_id }}'
+      state: present
+      purge_rules: false
+      listeners:
+      - Protocol: HTTP
+        Port: 80
+        DefaultActions:
+        - Type: forward
+          TargetGroupName: '{{ tg_name }}'
+        Rules:
+        - Conditions:
+          - Field: path-pattern
+            Values:
+            - /new
+          Priority: '2'
+          Actions:
+          - TargetGroupName: '{{ tg_name }}'
+            Type: forward
+  - assert:
+      that:
+      - alb.changed
+      - alb.listeners[0].rules|length == 3
+  - name: remove the rule
+    register: alb
+    ansible.amazon.elb_application_lb:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ alb_name }}'
+      subnets: '{{ alb_subnets }}'
+      security_groups: '{{ sec_group.group_id }}'
+      state: present
+      purge_listeners: true
+      listeners:
+      - Protocol: HTTP
+        Port: 80
+        DefaultActions:
+        - Type: forward
+          TargetGroupName: '{{ tg_name }}'
+        Rules: []
+  - assert:
+      that:
+      - alb.changed
+      - alb.listeners[0].rules|length == 1
+  - name: remove listener from ALB
+    register: alb
+    ansible.amazon.elb_application_lb:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ alb_name }}'
+      subnets: '{{ alb_subnets }}'
+      security_groups: '{{ sec_group.group_id }}'
+      state: present
+      listeners: []
+  - assert:
+      that:
+      - alb.changed
+      - not alb.listeners
+  - name: add the listener to the ALB
+    register: alb
+    ansible.amazon.elb_application_lb:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ alb_name }}'
+      subnets: '{{ alb_subnets }}'
+      security_groups: '{{ sec_group.group_id }}'
+      state: present
+      listeners:
+      - Protocol: HTTP
+        Port: 80
+        DefaultActions:
+        - Type: forward
+          TargetGroupName: '{{ tg_name }}'
+  - assert:
+      that:
+      - alb.changed
+      - alb.listeners|length == 1
+      - alb.availability_zones|length == 2

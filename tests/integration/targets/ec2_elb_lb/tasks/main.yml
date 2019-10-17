@@ -1,0 +1,306 @@
+- block:
+  - name: Create ELB
+    register: info
+    ansible.amazon.ec2_elb_lb:
+      name: '{{ tag_prefix }}'
+      region: '{{ ec2_region }}'
+      ec2_access_key: '{{ ec2_access_key }}'
+      ec2_secret_key: '{{ ec2_secret_key }}'
+      security_token: '{{ security_token }}'
+      state: present
+      zones:
+      - '{{ ec2_region }}a'
+      - '{{ ec2_region }}b'
+      listeners:
+      - protocol: http
+        load_balancer_port: 80
+        instance_port: 80
+      - protocol: http
+        load_balancer_port: 8080
+        instance_port: 8080
+      health_check:
+        ping_protocol: http
+        ping_port: 80
+        ping_path: /index.html
+        response_timeout: 5
+        interval: 30
+        unhealthy_threshold: 2
+        healthy_threshold: 10
+  - assert:
+      that:
+      - info.changed
+      - info.elb.status == "created"
+      - '"{{ ec2_region }}a" in info.elb.zones'
+      - '"{{ ec2_region }}b" in info.elb.zones'
+      - info.elb.health_check.healthy_threshold == 10
+      - info.elb.health_check.interval == 30
+      - info.elb.health_check.target == "HTTP:80/index.html"
+      - info.elb.health_check.timeout == 5
+      - info.elb.health_check.unhealthy_threshold == 2
+      - '[80, 80, "HTTP", "HTTP"] in info.elb.listeners'
+      - '[8080, 8080, "HTTP", "HTTP"] in info.elb.listeners'
+  - name: Change AZ's
+    register: info
+    ansible.amazon.ec2_elb_lb:
+      name: '{{ tag_prefix }}'
+      region: '{{ ec2_region }}'
+      ec2_access_key: '{{ ec2_access_key }}'
+      ec2_secret_key: '{{ ec2_secret_key }}'
+      security_token: '{{ security_token }}'
+      state: present
+      zones:
+      - '{{ ec2_region }}c'
+      listeners:
+      - protocol: http
+        load_balancer_port: 80
+        instance_port: 80
+      purge_zones: true
+      health_check:
+        ping_protocol: http
+        ping_port: 80
+        ping_path: /index.html
+        response_timeout: 5
+        interval: 30
+        unhealthy_threshold: 2
+        healthy_threshold: 10
+  - assert:
+      that:
+      - info.elb.status == "ok"
+      - info.changed
+      - info.elb.zones[0] == "{{ ec2_region }}c"
+  - name: Update AZ's
+    register: info
+    ansible.amazon.ec2_elb_lb:
+      name: '{{ tag_prefix }}'
+      region: '{{ ec2_region }}'
+      ec2_access_key: '{{ ec2_access_key }}'
+      ec2_secret_key: '{{ ec2_secret_key }}'
+      security_token: '{{ security_token }}'
+      state: present
+      zones:
+      - '{{ ec2_region }}a'
+      - '{{ ec2_region }}b'
+      - '{{ ec2_region }}c'
+      listeners:
+      - protocol: http
+        load_balancer_port: 80
+        instance_port: 80
+      purge_zones: true
+  - assert:
+      that:
+      - info.changed
+      - info.elb.status == "ok"
+      - '"{{ ec2_region }}a" in info.elb.zones'
+      - '"{{ ec2_region }}b" in info.elb.zones'
+      - '"{{ ec2_region }}c" in info.elb.zones'
+  - name: Purge Listeners
+    register: info
+    ansible.amazon.ec2_elb_lb:
+      name: '{{ tag_prefix }}'
+      region: '{{ ec2_region }}'
+      ec2_access_key: '{{ ec2_access_key }}'
+      ec2_secret_key: '{{ ec2_secret_key }}'
+      security_token: '{{ security_token }}'
+      state: present
+      zones:
+      - '{{ ec2_region }}a'
+      - '{{ ec2_region }}b'
+      - '{{ ec2_region }}c'
+      listeners:
+      - protocol: http
+        load_balancer_port: 80
+        instance_port: 81
+      purge_listeners: true
+  - assert:
+      that:
+      - info.elb.status == "ok"
+      - info.changed
+      - '[80, 81, "HTTP", "HTTP"] in info.elb.listeners'
+      - info.elb.listeners|length == 1
+  - name: Add Listeners
+    register: info
+    ansible.amazon.ec2_elb_lb:
+      name: '{{ tag_prefix }}'
+      region: '{{ ec2_region }}'
+      ec2_access_key: '{{ ec2_access_key }}'
+      ec2_secret_key: '{{ ec2_secret_key }}'
+      security_token: '{{ security_token }}'
+      state: present
+      zones:
+      - '{{ ec2_region }}a'
+      - '{{ ec2_region }}b'
+      - '{{ ec2_region }}c'
+      listeners:
+      - protocol: http
+        load_balancer_port: 8081
+        instance_port: 8081
+      purge_listeners: false
+  - assert:
+      that:
+      - info.elb.status == "ok"
+      - info.changed
+      - '[80, 81, "HTTP", "HTTP"] in info.elb.listeners'
+      - '[8081, 8081, "HTTP", "HTTP"] in info.elb.listeners'
+      - info.elb.listeners|length == 2
+  - name: test with no parameters
+    register: result
+    ignore_errors: true
+    ansible.amazon.ec2_elb_lb: null
+  - name: assert failure when called with no parameters
+    assert:
+      that:
+      - result.failed
+      - 'result.msg.startswith("missing required arguments: ")'
+  - name: test with only name
+    register: result
+    ignore_errors: true
+    ansible.amazon.ec2_elb_lb: name="{{ tag_prefix }}"
+  - name: assert failure when called with only name
+    assert:
+      that:
+      - result.failed
+      - 'result.msg == "missing required arguments: state"'
+  - name: test invalid region parameter
+    register: result
+    ignore_errors: true
+    ansible.amazon.ec2_elb_lb:
+      name: '{{ tag_prefix }}'
+      region: asdf querty 1234
+      state: present
+      listeners:
+      - protocol: http
+        load_balancer_port: 80
+        instance_port: 80
+      zones:
+      - '{{ ec2_region }}a'
+      - '{{ ec2_region }}b'
+      - '{{ ec2_region }}c'
+  - name: assert invalid region parameter
+    assert:
+      that:
+      - result.failed
+      - result.msg.startswith("Region asdf querty 1234 does not seem to be available
+        ")
+  - name: test valid region parameter
+    register: result
+    ignore_errors: true
+    ansible.amazon.ec2_elb_lb:
+      name: '{{ tag_prefix }}'
+      region: '{{ ec2_region }}'
+      state: present
+      zones:
+      - '{{ ec2_region }}a'
+      - '{{ ec2_region }}b'
+      - '{{ ec2_region }}c'
+      listeners:
+      - protocol: http
+        load_balancer_port: 80
+        instance_port: 80
+  - name: assert valid region parameter
+    assert:
+      that:
+      - result.failed
+      - result.msg.startswith("No handler was ready to authenticate.")
+  - name: test invalid ec2_url parameter
+    environment:
+      EC2_URL: bogus.example.com
+    register: result
+    ignore_errors: true
+    ansible.amazon.ec2_elb_lb:
+      name: '{{ tag_prefix }}'
+      region: '{{ ec2_region }}'
+      state: present
+      zones:
+      - '{{ ec2_region }}a'
+      - '{{ ec2_region }}b'
+      - '{{ ec2_region }}c'
+      listeners:
+      - protocol: http
+        load_balancer_port: 80
+        instance_port: 80
+  - name: assert invalid ec2_url parameter
+    assert:
+      that:
+      - result.failed
+      - result.msg.startswith("No handler was ready to authenticate.")
+  - name: test valid ec2_url parameter
+    environment:
+      EC2_URL: '{{ec2_url}}'
+    register: result
+    ignore_errors: true
+    ansible.amazon.ec2_elb_lb:
+      name: '{{ tag_prefix }}'
+      region: '{{ ec2_region }}'
+      state: present
+      zones:
+      - '{{ ec2_region }}a'
+      - '{{ ec2_region }}b'
+      - '{{ ec2_region }}c'
+      listeners:
+      - protocol: http
+        load_balancer_port: 80
+        instance_port: 80
+  - name: assert valid ec2_url parameter
+    assert:
+      that:
+      - result.failed
+      - result.msg.startswith("No handler was ready to authenticate.")
+  - name: test credentials from environment
+    environment:
+      EC2_ACCESS_KEY: bogus_access_key
+      EC2_SECRET_KEY: bogus_secret_key
+    register: result
+    ignore_errors: true
+    ansible.amazon.ec2_elb_lb:
+      name: '{{ tag_prefix }}'
+      region: '{{ ec2_region }}'
+      state: present
+      zones:
+      - '{{ ec2_region }}a'
+      - '{{ ec2_region }}b'
+      - '{{ ec2_region }}c'
+      listeners:
+      - protocol: http
+        load_balancer_port: 80
+        instance_port: 80
+  - name: assert credentials from environment
+    assert:
+      that:
+      - result.failed
+      - '"InvalidClientTokenId" in result.exception'
+  - name: test credential parameters
+    register: result
+    ignore_errors: true
+    ansible.amazon.ec2_elb_lb:
+      name: '{{ tag_prefix }}'
+      region: '{{ ec2_region }}'
+      state: present
+      zones:
+      - '{{ ec2_region }}a'
+      - '{{ ec2_region }}b'
+      - '{{ ec2_region }}c'
+      listeners:
+      - protocol: http
+        load_balancer_port: 80
+        instance_port: 80
+  - name: assert credential parameters
+    assert:
+      that:
+      - result.failed
+      - '"No handler was ready to authenticate. 1 handlers were checked." in result.msg'
+  always:
+  - name: remove the test load balancer completely
+    register: result
+    ansible.amazon.ec2_elb_lb:
+      name: '{{ tag_prefix }}'
+      region: '{{ ec2_region }}'
+      state: absent
+      ec2_access_key: '{{ ec2_access_key }}'
+      ec2_secret_key: '{{ ec2_secret_key }}'
+      security_token: '{{ security_token }}'
+  - name: assert the load balancer was removed
+    assert:
+      that:
+      - result.changed
+      - result.elb.name == "{{tag_prefix}}"
+      - result.elb.status == "deleted"

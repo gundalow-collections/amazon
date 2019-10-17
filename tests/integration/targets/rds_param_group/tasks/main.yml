@@ -1,0 +1,265 @@
+- block:
+  - name: test empty parameter group
+    register: result
+    ignore_errors: true
+    ansible.amazon.rds_param_group:
+      name: '{{ rds_param_group.name }}'
+      engine: '{{ rds_param_group.engine }}'
+      description: '{{ rds_param_group.description }}'
+      state: present
+      region: '{{ ec2_region }}'
+      ec2_access_key: '{{ aws_access_key }}'
+      ec2_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+  - name: assert rds parameter group changed
+    assert:
+      that:
+      - result.changed
+      - '''{{ result.db_parameter_group_name | lower }}'' == ''{{ rds_param_group.name
+        | lower }}'''
+      - result.tags == {}
+  - name: test empty parameter group with no arguments changes nothing
+    register: result
+    ignore_errors: true
+    ansible.amazon.rds_param_group:
+      name: '{{ rds_param_group.name }}'
+      engine: '{{ rds_param_group.engine }}'
+      description: '{{ rds_param_group.description }}'
+      state: present
+      region: '{{ ec2_region }}'
+      ec2_access_key: '{{ aws_access_key }}'
+      ec2_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+  - name: assert no change when running empty parameter group a second time
+    assert:
+      that:
+      - not result.changed
+  - name: test adding numeric tag
+    register: result
+    ignore_errors: true
+    ansible.amazon.rds_param_group:
+      name: '{{ rds_param_group.name }}'
+      engine: '{{ rds_param_group.engine }}'
+      description: '{{ rds_param_group.description }}'
+      state: present
+      tags:
+        Environment: test
+        Test: 123
+      region: '{{ ec2_region }}'
+      ec2_access_key: '{{ aws_access_key }}'
+      ec2_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+  - name: adding numeric tag just silently converts
+    assert:
+      that:
+      - result.changed
+      - result.tags.Test == "123"
+  - name: test tagging existing group
+    register: result
+    ignore_errors: true
+    ansible.amazon.rds_param_group:
+      name: '{{ rds_param_group.name }}'
+      engine: '{{ rds_param_group.engine }}'
+      description: '{{ rds_param_group.description }}'
+      state: present
+      tags:
+        Environment: test
+        Test: '123'
+        NewTag: hello
+      region: '{{ ec2_region }}'
+      ec2_access_key: '{{ aws_access_key }}'
+      ec2_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+  - name: assert tagging existing group changes it and adds tags
+    assert:
+      that:
+      - result.changed
+      - result.tags.NewTag == "hello"
+  - name: test repeating tagging existing group
+    register: result
+    ignore_errors: true
+    ansible.amazon.rds_param_group:
+      name: '{{ rds_param_group.name }}'
+      engine: '{{ rds_param_group.engine }}'
+      description: '{{ rds_param_group.description }}'
+      state: present
+      tags:
+        Environment: test
+        Test: '123'
+        NewTag: hello
+      region: '{{ ec2_region }}'
+      ec2_access_key: '{{ aws_access_key }}'
+      ec2_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+  - name: assert tagging existing group changes it and adds tags
+    assert:
+      that:
+      - not result.changed
+      - result.tags.Test == "123"
+  - name: test deleting tags from existing group
+    register: result
+    ignore_errors: true
+    ansible.amazon.rds_param_group:
+      name: '{{ rds_param_group.name }}'
+      engine: '{{ rds_param_group.engine }}'
+      description: '{{ rds_param_group.description }}'
+      state: present
+      tags:
+        Environment: test
+      region: '{{ ec2_region }}'
+      ec2_access_key: '{{ aws_access_key }}'
+      ec2_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      purge_tags: true
+  - name: assert removing tags from existing group changes it
+    assert:
+      that:
+      - result.changed
+      - result.tags.Environment == "test"
+      - '"NewTag" not in result.tags'
+  - name: test state=absent with engine defined (expect changed=true)
+    register: result
+    ignore_errors: true
+    ansible.amazon.rds_param_group:
+      name: '{{ rds_param_group.name }}'
+      engine: '{{ rds_param_group.engine }}'
+      state: absent
+      region: '{{ ec2_region }}'
+      ec2_access_key: '{{ aws_access_key }}'
+      ec2_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+  - name: assert state=absent with engine defined (expect changed=true)
+    assert:
+      that:
+      - result.changed
+  - name: test creating group with parameters
+    register: result
+    ignore_errors: true
+    ansible.amazon.rds_param_group:
+      name: '{{ rds_param_group.name }}'
+      engine: '{{ rds_param_group.engine }}'
+      description: '{{ rds_param_group.description }}'
+      state: present
+      params:
+        log_directory: /var/log/postgresql
+        log_statement: all
+        log_duration: true
+        this_param_does_not_exist: oh_no
+      tags:
+        Environment: test
+        Test: '123'
+      region: '{{ ec2_region }}'
+      ec2_access_key: '{{ aws_access_key }}'
+      ec2_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+  - name: assert creating a new group with parameter changes it
+    assert:
+      that:
+      - result.changed
+      - result.tags.Test == "123"
+      - result.errors|length == 2
+  - name: test repeating group with parameters
+    register: result
+    ignore_errors: true
+    ansible.amazon.rds_param_group:
+      name: '{{ rds_param_group.name }}'
+      engine: '{{ rds_param_group.engine }}'
+      description: '{{ rds_param_group.description }}'
+      state: present
+      params:
+        log_directory: /var/log/postgresql
+        log_statement: all
+        log_duration: true
+        this_param_does_not_exist: oh_no
+      tags:
+        Environment: test
+        Test: '123'
+      region: '{{ ec2_region }}'
+      ec2_access_key: '{{ aws_access_key }}'
+      ec2_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+  - name: assert repeating group with parameters does not change it
+    assert:
+      that:
+      - not result.changed
+      - result.tags.Test == "123"
+      - result.errors|length == 2
+  - name: test state=absent with engine defined (expect changed=true)
+    register: result
+    ignore_errors: true
+    ansible.amazon.rds_param_group:
+      name: '{{ rds_param_group.name }}'
+      engine: '{{ rds_param_group.engine }}'
+      state: absent
+      region: '{{ ec2_region }}'
+      ec2_access_key: '{{ aws_access_key }}'
+      ec2_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+  - name: assert state=absent with engine defined (expect changed=true)
+    assert:
+      that:
+      - result.changed
+  - name: test repeating state=absent (expect changed=false)
+    register: result
+    ignore_errors: true
+    ansible.amazon.rds_param_group:
+      name: '{{ rds_param_group.name }}'
+      engine: '{{ rds_param_group.engine }}'
+      state: absent
+      region: '{{ ec2_region }}'
+      ec2_access_key: '{{ aws_access_key }}'
+      ec2_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+  - name: assert repeating state=absent (expect changed=false)
+    assert:
+      that:
+      - not result.changed
+  - name: test creating group with more than 20 parameters
+    register: result
+    ignore_errors: true
+    ansible.amazon.rds_param_group:
+      name: '{{ rds_param_group.name }}'
+      engine: '{{ rds_param_group.engine }}'
+      description: '{{ rds_param_group.description }}'
+      params: '{{ rds_long_param_list }}'
+      state: present
+      region: '{{ ec2_region }}'
+      ec2_access_key: '{{ aws_access_key }}'
+      ec2_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+  - name: assert creating a new group with lots of parameter changes it
+    assert:
+      that:
+      - result.changed
+  - name: test creating group with more than 20 parameters
+    register: result
+    ignore_errors: true
+    ansible.amazon.rds_param_group:
+      name: '{{ rds_param_group.name }}'
+      engine: '{{ rds_param_group.engine }}'
+      description: '{{ rds_param_group.description }}'
+      params: '{{ rds_long_param_list }}'
+      region: '{{ ec2_region }}'
+      state: present
+      ec2_access_key: '{{ aws_access_key }}'
+      ec2_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+  - name: assert repeating a group with lots of parameter does not change it
+    assert:
+      that:
+      - not result.changed
+  always:
+  - name: test state=absent (expect changed=false)
+    register: result
+    ignore_errors: true
+    ansible.amazon.rds_param_group:
+      name: '{{ rds_param_group.name }}'
+      state: absent
+      region: '{{ ec2_region }}'
+      ec2_access_key: '{{ aws_access_key }}'
+      ec2_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+  - name: assert state=absent (expect changed=false)
+    assert:
+      that:
+      - result.changed

@@ -1,0 +1,191 @@
+- name: Integration test for AWS Step Function state machine module
+  block:
+  - name: Set connection information for all tasks
+    set_fact:
+      aws_connection_info:
+        aws_access_key: '{{ aws_access_key }}'
+        aws_secret_key: '{{ aws_secret_key }}'
+        security_token: '{{ security_token }}'
+        region: '{{ aws_region }}'
+    no_log: true
+  - name: Create IAM service role needed for Step Functions
+    register: step_functions_role
+    ansible.amazon.iam_role:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ step_functions_role_name }}'
+      description: Role with permissions for AWS Step Functions actions.
+      assume_role_policy_document: '{{ lookup(''file'', ''state_machines_iam_trust_policy.json'')
+        }}'
+      state: present
+  - name: Pause a few seconds to ensure IAM role is available to next task
+    pause:
+      seconds: 10
+  - name: Create a new state machine -- check_mode
+    register: creation_check
+    check_mode: true
+    ansible.amazon.aws_step_functions_state_machine:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ state_machine_name }}'
+      definition: '{{ lookup(''file'',''state_machine.json'') }}'
+      role_arn: '{{ step_functions_role.iam_role.arn }}'
+      tags:
+        project: helloWorld
+      state: present
+  - assert:
+      that:
+      - creation_check.changed == True
+      - creation_check.output == 'State machine would be created.'
+  - name: Create a new state machine
+    register: creation_output
+    ansible.amazon.aws_step_functions_state_machine:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ state_machine_name }}'
+      definition: '{{ lookup(''file'',''state_machine.json'') }}'
+      role_arn: '{{ step_functions_role.iam_role.arn }}'
+      tags:
+        project: helloWorld
+      state: present
+  - assert:
+      that:
+      - creation_output.changed == True
+  - name: Pause a few seconds to ensure state machine role is available
+    pause:
+      seconds: 5
+  - name: Idempotent rerun of same state function -- check_mode
+    register: result
+    check_mode: true
+    ansible.amazon.aws_step_functions_state_machine:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ state_machine_name }}'
+      definition: '{{ lookup(''file'',''state_machine.json'') }}'
+      role_arn: '{{ step_functions_role.iam_role.arn }}'
+      tags:
+        project: helloWorld
+      state: present
+  - assert:
+      that:
+      - result.changed == False
+      - result.output == 'State is up-to-date.'
+  - name: Idempotent rerun of same state function
+    register: result
+    ansible.amazon.aws_step_functions_state_machine:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ state_machine_name }}'
+      definition: '{{ lookup(''file'',''state_machine.json'') }}'
+      role_arn: '{{ step_functions_role.iam_role.arn }}'
+      tags:
+        project: helloWorld
+      state: present
+  - assert:
+      that:
+      - result.changed == False
+  - name: Update an existing state machine -- check_mode
+    register: update_check
+    check_mode: true
+    ansible.amazon.aws_step_functions_state_machine:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ state_machine_name }}'
+      definition: '{{ lookup(''file'',''alternative_state_machine.json'') }}'
+      role_arn: '{{ step_functions_role.iam_role.arn }}'
+      tags:
+        differentTag: different_tag
+      state: present
+  - assert:
+      that:
+      - update_check.changed == True
+      - 'update_check.output == ''State machine would be updated: {{ creation_output.state_machine_arn
+        }}'''
+  - name: Update an existing state machine
+    register: update_output
+    ansible.amazon.aws_step_functions_state_machine:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ state_machine_name }}'
+      definition: '{{ lookup(''file'',''alternative_state_machine.json'') }}'
+      role_arn: '{{ step_functions_role.iam_role.arn }}'
+      tags:
+        differentTag: different_tag
+      state: present
+  - assert:
+      that:
+      - update_output.changed == True
+      - update_output.state_machine_arn == creation_output.state_machine_arn
+  - name: Remove state machine -- check_mode
+    register: deletion_check
+    check_mode: true
+    ansible.amazon.aws_step_functions_state_machine:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ state_machine_name }}'
+      state: absent
+  - assert:
+      that:
+      - deletion_check.changed == True
+      - 'deletion_check.output == ''State machine would be deleted: {{ creation_output.state_machine_arn
+        }}'''
+  - name: Remove state machine
+    register: deletion_output
+    ansible.amazon.aws_step_functions_state_machine:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ state_machine_name }}'
+      state: absent
+  - assert:
+      that:
+      - deletion_output.changed == True
+      - deletion_output.state_machine_arn == creation_output.state_machine_arn
+  - name: Non-existent state machine is absent
+    register: result
+    ansible.amazon.aws_step_functions_state_machine:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: non_existing_state_machine
+      state: absent
+  - assert:
+      that:
+      - result.changed == False
+  always:
+  - name: Cleanup - delete state machine
+    ignore_errors: true
+    ansible.amazon.aws_step_functions_state_machine:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ state_machine_name }}'
+      state: absent
+  - name: Cleanup - delete IAM role needed for Step Functions test
+    ignore_errors: true
+    ansible.amazon.iam_role:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ step_functions_role_name }}'
+      state: absent

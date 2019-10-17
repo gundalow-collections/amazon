@@ -1,0 +1,31 @@
+namespace: ansible
+name: amazon
+version: 1.0.0
+readme: null
+authors: null
+description: null
+license: null
+license_file: null
+tags: null
+dependencies:
+  ansible.containers: '>=1.0'
+  ansible.acme: '>=1.0'
+  ansible.keycloak: '>=1.0'
+  ansible.kubernetes: '>=1.0'
+  netapp.netapp: '>=1.0'
+  ansible.avi: '>=1.0'
+  ansible.docker: '>=1.0'
+  ansible.network: '>=1.0'
+  ansible.vmware_soap: '>=1.0'
+  ansible.nso: '>=1.0'
+  ansible.misc: '>=1.0'
+  ansible.windows: '>=1.0'
+  cisco.aci: '>=1.0'
+  huawei.cloud: '>=1.0'
+  google.gcp: '>=1.0'
+  nagios.nagios: '>=1.0'
+  ansible.unix: '>=1.0'
+repository: git@github.com:ansible-collections/ansible.amazon.git
+documentation: null
+homepage: null
+issues: null

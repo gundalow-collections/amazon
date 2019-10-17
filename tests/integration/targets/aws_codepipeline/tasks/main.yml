@@ -1,0 +1,154 @@
+- name: Run aws_codebuild module integration tests
+  block:
+  - name: set connection information for all tasks
+    set_fact:
+      aws_connection_info:
+        aws_access_key: '{{ aws_access_key }}'
+        aws_secret_key: '{{ aws_secret_key }}'
+        security_token: '{{ security_token }}'
+        region: '{{ aws_region }}'
+    no_log: true
+  - name: create IAM role needed for CodePipeline test
+    register: codepipeline_iam_role
+    ansible.amazon.iam_role:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ codepipeline_service_role_name }}'
+      description: Role with permissions for CodePipeline actions.
+      assume_role_policy_document: '{{ lookup(''file'', ''codepipeline_iam_trust_policy.json'')
+        }}'
+      state: present
+  - name: create CodePipeline
+    register: output
+    retries: 10
+    delay: 5
+    until: output is success
+    ansible.amazon.aws_codepipeline:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ codepipeline_name }}'
+      role_arn: '{{ codepipeline_iam_role.iam_role.arn }}'
+      artifact_store:
+        type: S3
+        location: foo
+      stages:
+      - name: step_1
+        actions:
+        - name: action
+          actionTypeId:
+            category: Source
+            owner: AWS
+            provider: S3
+            version: '1'
+          configuration:
+            S3Bucket: foo
+            S3ObjectKey: bar
+          outputArtifacts:
+          - name: step_one_output
+      - name: step_2
+        actions:
+        - name: action
+          actionTypeId:
+            category: Build
+            owner: AWS
+            provider: CodeBuild
+            version: '1'
+          inputArtifacts:
+          - name: step_one_output
+          outputArtifacts:
+          - name: step_two_output
+          configuration:
+            ProjectName: foo
+      state: present
+  - assert:
+      that:
+      - output.changed == True
+      - output.pipeline.name == "{{ codepipeline_name  }}"
+      - output.pipeline.stages|length > 1
+  - name: idempotence check rerunning same CodePipeline task
+    register: rerun_test_output
+    ansible.amazon.aws_codepipeline:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ codepipeline_name }}'
+      role_arn: '{{ codepipeline_iam_role.iam_role.arn }}'
+      artifact_store:
+        type: S3
+        location: foo
+      stages:
+      - name: step_1
+        actions:
+        - name: action
+          actionTypeId:
+            category: Source
+            owner: AWS
+            provider: S3
+            version: '1'
+          configuration:
+            S3Bucket: foo
+            S3ObjectKey: bar
+          outputArtifacts:
+          - name: step_one_output
+      - name: step_2
+        actions:
+        - name: action
+          actionTypeId:
+            category: Build
+            owner: AWS
+            provider: CodeBuild
+            version: '1'
+          inputArtifacts:
+          - name: step_one_output
+          outputArtifacts:
+          - name: step_two_output
+          configuration:
+            ProjectName: foo
+      state: present
+  - assert:
+      that:
+      - rerun_test_output.changed == False
+      - rerun_test_output.pipeline == output.pipeline
+  - name: Test deletion of CodePipeline
+    register: absent_test_output
+    ansible.amazon.aws_codepipeline:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ codepipeline_name }}'
+      role_arn: ''
+      artifact_store: {}
+      stages: []
+      state: absent
+  - assert:
+      that:
+      - absent_test_output.changed == True
+      - absent_test_output.pipeline is undefined
+  always:
+  - name: Cleanup - delete test CodePipeline
+    ignore_errors: true
+    ansible.amazon.aws_codepipeline:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ codepipeline_name }}'
+      role_arn: ''
+      artifact_store: {}
+      stages: []
+      state: absent
+  - name: Cleanup - delete IAM role needed for CodePipeline test
+    ignore_errors: true
+    ansible.amazon.iam_role:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ codepipeline_name }}'
+      state: absent

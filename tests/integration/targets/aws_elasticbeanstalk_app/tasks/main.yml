@@ -1,0 +1,96 @@
+- block:
+  - name: set connection information for all tasks
+    set_fact:
+      aws_connection_info:
+        aws_access_key: '{{ aws_access_key }}'
+        aws_secret_key: '{{ aws_secret_key }}'
+        security_token: '{{ security_token }}'
+        region: '{{ aws_region }}'
+    no_log: true
+  - name: test with no parameters
+    register: result
+    ignore_errors: true
+    ansible.amazon.aws_elasticbeanstalk_app: null
+  - name: assert failure when called with no parameters
+    assert:
+      that:
+      - result.failed
+  - name: test create app
+    register: result
+    ansible.amazon.aws_elasticbeanstalk_app:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      app_name: '{{ app_name }}'
+      description: '{{ description }}'
+      state: present
+  - name: assert changed is True
+    assert:
+      that:
+      - result.changed == True
+  - name: test create when app already exists
+    register: result
+    ansible.amazon.aws_elasticbeanstalk_app:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      app_name: '{{ app_name }}'
+      description: '{{ description }}'
+      state: present
+  - name: assert changed is False since the app already exists
+    assert:
+      that:
+      - result.changed == False
+  - name: make an update to an existing app
+    register: result
+    ansible.amazon.aws_elasticbeanstalk_app:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      app_name: '{{ app_name }}'
+      description: '{{ alternate_description }}'
+      state: present
+  - name: assert changed is True
+    assert:
+      that:
+      - result.changed == True
+  - name: delete non existent app
+    register: result
+    ignore_errors: true
+    ansible.amazon.aws_elasticbeanstalk_app:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      app_name: non_app
+      state: absent
+  - name: assert deleteing non existant app fails
+    assert:
+      that:
+      - result.changed == False
+      - result.output.startswith("Application not found")
+  - name: delete existing app
+    register: result
+    ansible.amazon.aws_elasticbeanstalk_app:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      app_name: '{{ app_name }}'
+      state: absent
+  - name: assert changed is True
+    assert:
+      that:
+      - result.changed == True
+  always:
+  - name: delete existing app
+    ansible.amazon.aws_elasticbeanstalk_app:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      app_name: '{{ app_name }}'
+      state: absent

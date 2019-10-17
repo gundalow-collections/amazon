@@ -1,0 +1,188 @@
+- name: set up aws connection info
+  set_fact:
+    aws_connection_info:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+  no_log: true
+- name: generate unique value for testing
+  set_fact:
+    tgw_description: '{{ resource_prefix }}-tgw'
+- block:
+  - name: test create transit gateway without permissions
+    register: result
+    ignore_errors: true
+    ansible.amazon.ec2_transit_gateway:
+      description: '{{ tgw_description }}'
+      region: '{{ aws_region }}'
+  - name: assert nice message returned
+    assert:
+      that:
+      - result is failed
+      - result.msg != 'MODULE FAILURE'
+  - name: test create transit gateway without region
+    register: result
+    ignore_errors: true
+    ansible.amazon.ec2_transit_gateway:
+      description: '{{ tgw_description }}'
+  - name: assert failure when called with minimal parameters but no region
+    assert:
+      that:
+      - result.failed
+      - result.msg.startswith("The ec2_transit_gateway module requires a region")
+  - name: test create transit gateway without tags
+    register: create_result
+    ansible.amazon.ec2_transit_gateway:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      description: '{{ tgw_description }}'
+  - name: assert changed is True
+    assert:
+      that:
+      - create_result.changed == True
+  - name: test update transit gateway with tags by description
+    register: result
+    ansible.amazon.ec2_transit_gateway:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      description: '{{ tgw_description }}'
+      tags:
+        Name: Ansible Test TGW
+  - name: assert changed is True
+    assert:
+      that:
+      - result.changed == True
+      - result.transit_gateway.tags | length == 1
+      - '''Name'' in result.transit_gateway.tags'
+  - name: test update transit gateway with new tag and purge_tags false
+    register: result
+    ansible.amazon.ec2_transit_gateway:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      transit_gateway_id: '{{ create_result.transit_gateway.transit_gateway_id }}'
+      purge_tags: false
+      tags:
+        status: ok to delete
+  - name: assert changed is True and have 2 tags
+    assert:
+      that:
+      - result.changed == True
+      - result.transit_gateway.tags | length == 2
+      - '''Name'' in result.transit_gateway.tags'
+  - name: test update transit gateway with purge_tags true
+    register: result
+    ansible.amazon.ec2_transit_gateway:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      transit_gateway_id: '{{ create_result.transit_gateway.transit_gateway_id }}'
+      purge_tags: true
+      tags:
+        status: ok to delete
+  - name: assert changed is True and TGW tag is absent
+    assert:
+      that:
+      - result.changed == True
+      - result.transit_gateway.tags | length == 1
+      - '''Name'' not in result.transit_gateway.tags'
+  - name: test idempotence
+    register: result
+    ansible.amazon.ec2_transit_gateway:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      description: '{{ tgw_description }}'
+      purge_tags: true
+      tags:
+        status: ok to delete
+  - name: assert changed is False
+    assert:
+      that:
+      - result.changed == False
+  - name: test success with no parameters
+    register: result
+    ansible.amazon.ec2_transit_gateway_info:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+  - name: assert success with no parameters
+    assert:
+      that:
+      - result.changed == false
+      - result.transit_gateways != []
+  - name: test success with single filter
+    register: result
+    ansible.amazon.ec2_transit_gateway_info:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      filters:
+        transit-gateway-id: '{{ create_result.transit_gateway.transit_gateway_id }}'
+  - name: assert success with transit_gateway_id filter
+    assert:
+      that:
+      - result.changed == false
+      - result.transit_gateways != []
+  - name: test empty result set for non-existent tgw id via filter
+    register: result
+    ansible.amazon.ec2_transit_gateway_info:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      filters:
+        transit-gateway-id: tgw-00000011111111122
+  - name: assert success with transit_gateway_id filter
+    assert:
+      that:
+      - result.changed == false
+      - result.transit_gateways == []
+  - name: test NotFound exception caught and returned empty result set
+    register: result
+    ansible.amazon.ec2_transit_gateway_info:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      transit_gateway_id: tgw-00000011111111122
+  - name: assert success with transit_gateway_id filter
+    assert:
+      that:
+      - result.changed == false
+      - result.transit_gateways == []
+  - name: test success with multiple filters
+    register: result
+    ansible.amazon.ec2_transit_gateway_info:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      filters:
+        options.dns-support: enable
+        options.vpn-ecmp-support: enable
+  - name: assert success with transit_gateway_id filter
+    assert:
+      that:
+      - result.changed == false
+      - result.transit_gateways != []
+  always:
+  - name: delete transit gateway
+    ignore_errors: true
+    ansible.amazon.ec2_transit_gateway:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      description: '{{ tgw_description }}'
+      state: absent

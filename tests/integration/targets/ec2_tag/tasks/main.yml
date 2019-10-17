@@ -1,0 +1,149 @@
+- name: Set up AWS connection info
+  set_fact:
+    aws_connection_info:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+  no_log: true
+- block:
+  - name: Create an EC2 volume so we have something to tag
+    register: volume
+    ansible.amazon.ec2_vol:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ resource_prefix }} ec2_tag volume'
+      volume_size: 1
+      state: present
+      zone: '{{ aws_region }}a'
+  - name: List the tags
+    register: result
+    ansible.amazon.ec2_tag:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      resource: '{{ volume.volume_id }}'
+      state: list
+  - assert:
+      that:
+      - result.tags | length == 1
+      - result.tags.Name == '{{ resource_prefix }} ec2_tag volume'
+  - name: Set some new tags
+    register: result
+    ansible.amazon.ec2_tag:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      resource: '{{ volume.volume_id }}'
+      state: present
+      tags:
+        foo: foo
+        bar: baz
+        baz: also baz
+  - assert:
+      that:
+      - result is changed
+      - result.tags | length == 4
+      - result.added_tags | length == 3
+      - result.tags.Name == '{{ resource_prefix }} ec2_tag volume'
+      - result.tags.foo == 'foo'
+      - result.tags.bar == 'baz'
+      - result.tags.baz == 'also baz'
+  - name: Remove a tag by name
+    register: result
+    ansible.amazon.ec2_tag:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      resource: '{{ volume.volume_id }}'
+      state: absent
+      tags:
+        baz: null
+  - assert:
+      that:
+      - result is changed
+      - result.removed_tags | length == 1
+      - '''baz'' in result.removed_tags'
+  - name: Don't remove a tag
+    register: result
+    ansible.amazon.ec2_tag:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      resource: '{{ volume.volume_id }}'
+      state: absent
+      tags:
+        foo: baz
+  - assert:
+      that:
+      - result is not changed
+  - name: Remove a tag
+    register: result
+    ansible.amazon.ec2_tag:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      resource: '{{ volume.volume_id }}'
+      state: absent
+      tags:
+        foo: foo
+  - assert:
+      that:
+      - result is changed
+      - result.tags | length == 2
+      - '''added_tags'' not in result'
+      - result.removed_tags | length == 1
+      - result.tags.Name == '{{ resource_prefix }} ec2_tag volume'
+      - result.tags.bar == 'baz'
+  - name: Set an exclusive tag
+    register: result
+    ansible.amazon.ec2_tag:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      resource: '{{ volume.volume_id }}'
+      purge_tags: true
+      tags:
+        baz: quux
+  - assert:
+      that:
+      - result is changed
+      - result.tags | length == 1
+      - result.added_tags | length == 1
+      - result.removed_tags | length == 2
+      - result.tags.baz == 'quux'
+  - name: Remove all tags
+    register: result
+    ansible.amazon.ec2_tag:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      resource: '{{ volume.volume_id }}'
+      purge_tags: true
+      tags: {}
+  - assert:
+      that:
+      - result is changed
+      - result.tags | length == 0
+  always:
+  - name: Remove the volume
+    register: result
+    until: result is not failed
+    ignore_errors: true
+    retries: 10
+    ansible.amazon.ec2_vol:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      id: '{{ volume.volume_id }}'
+      state: absent

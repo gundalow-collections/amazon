@@ -1,0 +1,413 @@
+- block:
+  - name: set connection information for all tasks
+    set_fact:
+      aws_connection_info:
+        aws_access_key: '{{ aws_access_key | default('''') }}'
+        aws_secret_key: '{{ aws_secret_key | default('''') }}'
+        security_token: '{{ security_token | default('''') }}'
+        region: '{{ aws_region | default('''') }}'
+    no_log: true
+  - name: Create simple s3_bucket
+    register: output
+    ansible.amazon.s3_bucket:
+      aws_access_key: '{{ aws_access_key | default('''') }}'
+      aws_secret_key: '{{ aws_secret_key | default('''') }}'
+      security_token: '{{ security_token | default('''') }}'
+      region: '{{ aws_region | default('''') }}'
+      name: '{{ resource_prefix }}-testbucket-ansible'
+      state: present
+  - assert:
+      that:
+      - output.changed
+      - output.name == '{{ resource_prefix }}-testbucket-ansible'
+      - not output.requester_pays
+  - name: Try to update the same bucket with the same values
+    register: output
+    ansible.amazon.s3_bucket:
+      aws_access_key: '{{ aws_access_key | default('''') }}'
+      aws_secret_key: '{{ aws_secret_key | default('''') }}'
+      security_token: '{{ security_token | default('''') }}'
+      region: '{{ aws_region | default('''') }}'
+      name: '{{ resource_prefix }}-testbucket-ansible'
+      state: present
+  - assert:
+      that:
+      - not output.changed
+      - output.name == '{{ resource_prefix }}-testbucket-ansible'
+      - not output.requester_pays
+  - name: Delete test s3_bucket
+    register: output
+    ansible.amazon.s3_bucket:
+      aws_access_key: '{{ aws_access_key | default('''') }}'
+      aws_secret_key: '{{ aws_secret_key | default('''') }}'
+      security_token: '{{ security_token | default('''') }}'
+      region: '{{ aws_region | default('''') }}'
+      name: '{{ resource_prefix }}-testbucket-ansible'
+      state: absent
+  - assert:
+      that:
+      - output.changed
+  - name: Set bucket_name variable to be able to use it in lookup('template')
+    set_fact:
+      bucket_name: '{{ resource_prefix }}-testbucket-ansible-complex'
+  - name: Create more complex s3_bucket
+    register: output
+    ansible.amazon.s3_bucket:
+      aws_access_key: '{{ aws_access_key | default('''') }}'
+      aws_secret_key: '{{ aws_secret_key | default('''') }}'
+      security_token: '{{ security_token | default('''') }}'
+      region: '{{ aws_region | default('''') }}'
+      name: '{{ resource_prefix }}-testbucket-ansible-complex'
+      state: present
+      policy: '{{ lookup(''template'',''policy.json'') }}'
+      requester_pays: true
+      versioning: true
+      tags:
+        example: tag1
+        another: tag2
+  - assert:
+      that:
+      - output.changed
+      - output.name == '{{ resource_prefix }}-testbucket-ansible-complex'
+      - output.requester_pays
+      - output.versioning.MfaDelete == 'Disabled'
+      - output.versioning.Versioning == 'Enabled'
+      - output.tags.example == 'tag1'
+      - output.tags.another == 'tag2'
+      - output.policy.Statement[0].Action == 's3:GetObject'
+      - output.policy.Statement[0].Effect == 'Allow'
+      - output.policy.Statement[0].Principal == '*'
+      - output.policy.Statement[0].Resource == 'arn:aws:s3:::{{ resource_prefix }}-testbucket-ansible-complex/*'
+      - output.policy.Statement[0].Sid == 'AddPerm'
+  - name: Pause to help with s3 bucket eventual consistency
+    pause:
+      seconds: 10
+  - name: Try to update the same complex s3_bucket
+    register: output
+    ansible.amazon.s3_bucket:
+      aws_access_key: '{{ aws_access_key | default('''') }}'
+      aws_secret_key: '{{ aws_secret_key | default('''') }}'
+      security_token: '{{ security_token | default('''') }}'
+      region: '{{ aws_region | default('''') }}'
+      name: '{{ resource_prefix }}-testbucket-ansible-complex'
+      state: present
+      policy: '{{ lookup(''template'',''policy.json'') }}'
+      requester_pays: true
+      versioning: true
+      tags:
+        example: tag1
+        another: tag2
+  - assert:
+      that:
+      - not output.changed
+  - name: Update bucket policy on complex bucket
+    register: output
+    ansible.amazon.s3_bucket:
+      aws_access_key: '{{ aws_access_key | default('''') }}'
+      aws_secret_key: '{{ aws_secret_key | default('''') }}'
+      security_token: '{{ security_token | default('''') }}'
+      region: '{{ aws_region | default('''') }}'
+      name: '{{ resource_prefix }}-testbucket-ansible-complex'
+      state: present
+      policy: '{{ lookup(''template'',''policy-updated.json'') }}'
+      requester_pays: true
+      versioning: true
+      tags:
+        example: tag1
+        another: tag2
+  - assert:
+      that:
+      - output.changed
+      - output.policy.Statement[0].Action == 's3:GetObject'
+      - output.policy.Statement[0].Effect == 'Deny'
+      - output.policy.Statement[0].Principal == '*'
+      - output.policy.Statement[0].Resource == 'arn:aws:s3:::{{ resource_prefix }}-testbucket-ansible-complex/*'
+      - output.policy.Statement[0].Sid == 'AddPerm'
+  - name: Pause to help with s3 bucket eventual consistency
+    pause:
+      seconds: 10
+  - name: Update attributes for s3_bucket
+    register: output
+    ansible.amazon.s3_bucket:
+      aws_access_key: '{{ aws_access_key | default('''') }}'
+      aws_secret_key: '{{ aws_secret_key | default('''') }}'
+      security_token: '{{ security_token | default('''') }}'
+      region: '{{ aws_region | default('''') }}'
+      name: '{{ resource_prefix }}-testbucket-ansible-complex'
+      state: present
+      policy: '{{ lookup(''template'',''policy.json'') }}'
+      requester_pays: false
+      versioning: false
+      tags:
+        example: tag1-udpated
+        another: tag2
+  - assert:
+      that:
+      - output.changed
+      - output.name == '{{ resource_prefix }}-testbucket-ansible-complex'
+      - not output.requester_pays
+      - output.versioning.MfaDelete == 'Disabled'
+      - output.versioning.Versioning in ['Suspended', 'Disabled']
+      - output.tags.example == 'tag1-udpated'
+      - output.tags.another == 'tag2'
+      - output.policy.Statement[0].Action == 's3:GetObject'
+      - output.policy.Statement[0].Effect == 'Allow'
+      - output.policy.Statement[0].Principal == '*'
+      - output.policy.Statement[0].Resource == 'arn:aws:s3:::{{ resource_prefix }}-testbucket-ansible-complex/*'
+      - output.policy.Statement[0].Sid == 'AddPerm'
+  - name: Pause to help with s3 bucket eventual consistency
+    pause:
+      seconds: 10
+  - name: Remove a tag for s3_bucket
+    register: output
+    ansible.amazon.s3_bucket:
+      aws_access_key: '{{ aws_access_key | default('''') }}'
+      aws_secret_key: '{{ aws_secret_key | default('''') }}'
+      security_token: '{{ security_token | default('''') }}'
+      region: '{{ aws_region | default('''') }}'
+      name: '{{ resource_prefix }}-testbucket-ansible-complex'
+      state: present
+      policy: '{{ lookup(''template'',''policy.json'') }}'
+      requester_pays: false
+      versioning: false
+      tags:
+        example: tag1-udpated
+  - assert:
+      that:
+      - output.changed
+      - output.tags.example == 'tag1-udpated'
+      - '''another'' not in output.tags'
+  - name: Pause to help with s3 bucket eventual consistency
+    pause:
+      seconds: 10
+  - name: Add a tag for s3_bucket with purge_tags False
+    register: output
+    ansible.amazon.s3_bucket:
+      aws_access_key: '{{ aws_access_key | default('''') }}'
+      aws_secret_key: '{{ aws_secret_key | default('''') }}'
+      security_token: '{{ security_token | default('''') }}'
+      region: '{{ aws_region | default('''') }}'
+      name: '{{ resource_prefix }}-testbucket-ansible-complex'
+      state: present
+      policy: '{{ lookup(''template'',''policy.json'') }}'
+      requester_pays: false
+      versioning: false
+      purge_tags: false
+      tags:
+        anewtag: here
+  - assert:
+      that:
+      - output.changed
+      - output.tags.example == 'tag1-udpated'
+      - output.tags.anewtag == 'here'
+  - name: Pause to help with s3 bucket eventual consistency
+    pause:
+      seconds: 10
+  - name: Update a tag for s3_bucket with purge_tags False
+    register: output
+    ansible.amazon.s3_bucket:
+      aws_access_key: '{{ aws_access_key | default('''') }}'
+      aws_secret_key: '{{ aws_secret_key | default('''') }}'
+      security_token: '{{ security_token | default('''') }}'
+      region: '{{ aws_region | default('''') }}'
+      name: '{{ resource_prefix }}-testbucket-ansible-complex'
+      state: present
+      policy: '{{ lookup(''template'',''policy.json'') }}'
+      requester_pays: false
+      versioning: false
+      purge_tags: false
+      tags:
+        anewtag: next
+  - assert:
+      that:
+      - output.changed
+      - output.tags.example == 'tag1-udpated'
+      - output.tags.anewtag == 'next'
+  - name: Pause to help with s3 bucket eventual consistency
+    pause:
+      seconds: 10
+  - name: Pass empty tags dict for s3_bucket with purge_tags False
+    register: output
+    ansible.amazon.s3_bucket:
+      aws_access_key: '{{ aws_access_key | default('''') }}'
+      aws_secret_key: '{{ aws_secret_key | default('''') }}'
+      security_token: '{{ security_token | default('''') }}'
+      region: '{{ aws_region | default('''') }}'
+      name: '{{ resource_prefix }}-testbucket-ansible-complex'
+      state: present
+      policy: '{{ lookup(''template'',''policy.json'') }}'
+      requester_pays: false
+      versioning: false
+      purge_tags: false
+      tags: {}
+  - assert:
+      that:
+      - not output.changed
+      - output.tags.example == 'tag1-udpated'
+      - output.tags.anewtag == 'next'
+  - name: Pause to help with s3 bucket eventual consistency
+    pause:
+      seconds: 10
+  - name: Do not specify any tag to ensure previous tags are not removed
+    register: output
+    ansible.amazon.s3_bucket:
+      aws_access_key: '{{ aws_access_key | default('''') }}'
+      aws_secret_key: '{{ aws_secret_key | default('''') }}'
+      security_token: '{{ security_token | default('''') }}'
+      region: '{{ aws_region | default('''') }}'
+      name: '{{ resource_prefix }}-testbucket-ansible-complex'
+      state: present
+      policy: '{{ lookup(''template'',''policy.json'') }}'
+      requester_pays: false
+      versioning: false
+  - assert:
+      that:
+      - not output.changed
+      - output.tags.example == 'tag1-udpated'
+  - name: Remove all tags
+    register: output
+    ansible.amazon.s3_bucket:
+      aws_access_key: '{{ aws_access_key | default('''') }}'
+      aws_secret_key: '{{ aws_secret_key | default('''') }}'
+      security_token: '{{ security_token | default('''') }}'
+      region: '{{ aws_region | default('''') }}'
+      name: '{{ resource_prefix }}-testbucket-ansible-complex'
+      state: present
+      policy: '{{ lookup(''template'',''policy.json'') }}'
+      requester_pays: false
+      versioning: false
+      tags: {}
+  - assert:
+      that:
+      - output.changed
+      - output.tags == {}
+  - name: Pause to help with s3 bucket eventual consistency
+    pause:
+      seconds: 5
+  - name: Delete complex s3 bucket
+    register: output
+    ansible.amazon.s3_bucket:
+      aws_access_key: '{{ aws_access_key | default('''') }}'
+      aws_secret_key: '{{ aws_secret_key | default('''') }}'
+      security_token: '{{ security_token | default('''') }}'
+      region: '{{ aws_region | default('''') }}'
+      name: '{{ resource_prefix }}-testbucket-ansible-complex'
+      state: absent
+  - assert:
+      that:
+      - output.changed
+  - name: Create bucket with dot in name
+    register: output
+    ansible.amazon.s3_bucket:
+      aws_access_key: '{{ aws_access_key | default('''') }}'
+      aws_secret_key: '{{ aws_secret_key | default('''') }}'
+      security_token: '{{ security_token | default('''') }}'
+      region: '{{ aws_region | default('''') }}'
+      name: '{{ resource_prefix }}.testbucket.ansible'
+      state: present
+  - assert:
+      that:
+      - output.changed
+      - output.name == '{{ resource_prefix }}.testbucket.ansible'
+  - name: Pause to help with s3 bucket eventual consistency
+    pause:
+      seconds: 15
+  - name: Delete s3_bucket with dot in name
+    register: output
+    ansible.amazon.s3_bucket:
+      aws_access_key: '{{ aws_access_key | default('''') }}'
+      aws_secret_key: '{{ aws_secret_key | default('''') }}'
+      security_token: '{{ security_token | default('''') }}'
+      region: '{{ aws_region | default('''') }}'
+      name: '{{ resource_prefix }}.testbucket.ansible'
+      state: absent
+  - assert:
+      that:
+      - output.changed
+  - name: Try to delete a missing bucket (should not fail)
+    register: output
+    ansible.amazon.s3_bucket:
+      aws_access_key: '{{ aws_access_key | default('''') }}'
+      aws_secret_key: '{{ aws_secret_key | default('''') }}'
+      security_token: '{{ security_token | default('''') }}'
+      region: '{{ aws_region | default('''') }}'
+      name: '{{ resource_prefix }}-testbucket-ansible-missing'
+      state: absent
+  - assert:
+      that:
+      - not output.changed
+  - name: Create bucket with AES256 encryption enabled
+    register: output
+    ansible.amazon.s3_bucket:
+      aws_access_key: '{{ aws_access_key | default('''') }}'
+      aws_secret_key: '{{ aws_secret_key | default('''') }}'
+      security_token: '{{ security_token | default('''') }}'
+      region: '{{ aws_region | default('''') }}'
+      name: '{{ resource_prefix }}-testbucket-encrypt-ansible'
+      state: present
+      encryption: AES256
+  - assert:
+      that:
+      - output.changed
+      - output.name == '{{ resource_prefix }}-testbucket-encrypt-ansible'
+      - output.encryption
+      - output.encryption.SSEAlgorithm == 'AES256'
+  - name: Update bucket with same encryption config
+    register: output
+    ansible.amazon.s3_bucket:
+      aws_access_key: '{{ aws_access_key | default('''') }}'
+      aws_secret_key: '{{ aws_secret_key | default('''') }}'
+      security_token: '{{ security_token | default('''') }}'
+      region: '{{ aws_region | default('''') }}'
+      name: '{{ resource_prefix }}-testbucket-encrypt-ansible'
+      state: present
+      encryption: AES256
+  - assert:
+      that:
+      - not output.changed
+      - output.encryption
+      - output.encryption.SSEAlgorithm == 'AES256'
+  - name: Disable encryption from bucket
+    register: output
+    ansible.amazon.s3_bucket:
+      aws_access_key: '{{ aws_access_key | default('''') }}'
+      aws_secret_key: '{{ aws_secret_key | default('''') }}'
+      security_token: '{{ security_token | default('''') }}'
+      region: '{{ aws_region | default('''') }}'
+      name: '{{ resource_prefix }}-testbucket-encrypt-ansible'
+      state: present
+      encryption: none
+  - assert:
+      that:
+      - output.changed
+      - not output.encryption
+  - name: Pause to help with s3 bucket eventual consistency
+    pause:
+      seconds: 10
+  - name: Delete encryption test s3 bucket
+    register: output
+    ansible.amazon.s3_bucket:
+      aws_access_key: '{{ aws_access_key | default('''') }}'
+      aws_secret_key: '{{ aws_secret_key | default('''') }}'
+      security_token: '{{ security_token | default('''') }}'
+      region: '{{ aws_region | default('''') }}'
+      name: '{{ resource_prefix }}-testbucket-encrypt-ansible'
+      state: absent
+  - assert:
+      that:
+      - output.changed
+  always:
+  - name: Ensure all buckets are deleted
+    ignore_errors: true
+    with_items:
+    - '{{ resource_prefix }}-testbucket-ansible'
+    - '{{ resource_prefix }}-testbucket-ansible-complex'
+    - '{{ resource_prefix }}.testbucket.ansible'
+    - '{{ resource_prefix }}-testbucket-encrypt-ansible'
+    ansible.amazon.s3_bucket:
+      aws_access_key: '{{ aws_access_key | default('''') }}'
+      aws_secret_key: '{{ aws_secret_key | default('''') }}'
+      security_token: '{{ security_token | default('''') }}'
+      region: '{{ aws_region | default('''') }}'
+      name: '{{item}}'
+      state: absent

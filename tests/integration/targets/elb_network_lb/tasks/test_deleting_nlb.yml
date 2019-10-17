@@ -1,0 +1,51 @@
+- block:
+  - name: set connection information for all tasks
+    set_fact:
+      aws_connection_info:
+        aws_access_key: '{{ aws_access_key }}'
+        aws_secret_key: '{{ aws_secret_key }}'
+        security_token: '{{ security_token }}'
+        region: '{{ aws_region }}'
+    no_log: true
+  - name: destroy NLB with listener
+    register: nlb
+    ansible.amazon.elb_network_lb:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ nlb_name }}'
+      subnets: '{{ nlb_subnets }}'
+      state: absent
+      listeners:
+      - Protocol: TCP
+        Port: 80
+        DefaultActions:
+        - Type: forward
+          TargetGroupName: '{{ tg_name }}'
+      wait: true
+      wait_timeout: 300
+  - assert:
+      that:
+      - nlb.changed
+  - name: test idempotence
+    register: nlb
+    ansible.amazon.elb_network_lb:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ nlb_name }}'
+      subnets: '{{ nlb_subnets }}'
+      state: absent
+      listeners:
+      - Protocol: TCP
+        Port: 80
+        DefaultActions:
+        - Type: forward
+          TargetGroupName: '{{ tg_name }}'
+      wait: true
+      wait_timeout: 300
+  - assert:
+      that:
+      - not nlb.changed

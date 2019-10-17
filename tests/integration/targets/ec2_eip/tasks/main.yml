@@ -1,0 +1,156 @@
+- name: Integration testing for ec2_eip
+  block:
+  - name: set up aws connection info
+    set_fact:
+      aws_connection_info:
+        aws_access_key: '{{ aws_access_key }}'
+        aws_secret_key: '{{ aws_secret_key }}'
+        security_token: '{{ security_token }}'
+        region: '{{ aws_region }}'
+    no_log: true
+  - name: Allocate a new eip - attempt reusing unallocated ones
+    register: eip
+    ansible.amazon.ec2_eip:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      state: present
+      in_vpc: true
+      reuse_existing_ip_allowed: true
+  - assert:
+      that:
+      - eip is defined
+      - eip.public_ip is defined and eip.public_ip != ""
+      - eip.allocation_id is defined and eip.allocation_id != ""
+  - name: Allocate a new eip
+    register: new_eip
+    ansible.amazon.ec2_eip:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      state: present
+      in_vpc: true
+  - assert:
+      that:
+      - new_eip is defined
+      - new_eip is changed
+      - new_eip.public_ip is defined and new_eip.public_ip != ""
+      - new_eip.allocation_id is defined and new_eip.allocation_id != ""
+  - name: Match an existing eip (changed == false)
+    register: existing_eip
+    ansible.amazon.ec2_eip:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      state: present
+      in_vpc: true
+      public_ip: '{{ eip.public_ip }}'
+  - assert:
+      that:
+      - existing_eip is defined
+      - existing_eip is not changed
+      - existing_eip.public_ip is defined and existing_eip.public_ip != ""
+      - existing_eip.allocation_id is defined and existing_eip.allocation_id != ""
+  - name: attempt reusing an existing eip with a tag (or allocate a new one)
+    register: tagged_eip
+    ansible.amazon.ec2_eip:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      state: present
+      in_vpc: true
+      reuse_existing_ip_allowed: true
+      tag_name: Team
+  - assert:
+      that:
+      - tagged_eip is defined
+      - tagged_eip.public_ip is defined and tagged_eip.public_ip != ""
+      - tagged_eip.allocation_id is defined and tagged_eip.allocation_id != ""
+  - name: attempt reusing an existing eip with a tag and it's value (or allocate a
+      new one)
+    register: backend_eip
+    ansible.amazon.ec2_eip:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      state: present
+      in_vpc: true
+      public_ip: '{{ eip.public_ip }}'
+      reuse_existing_ip_allowed: true
+      tag_name: Team
+      tag_value: Backend
+  - assert:
+      that:
+      - backend_eip is defined
+      - backend_eip.public_ip is defined and backend_eip.public_ip != ""
+      - backend_eip.allocation_id is defined and backend_eip.allocation_id != ""
+  - name: attempt reusing an existing eip with a tag and it's value (or allocate a
+      new one from pool)
+    register: amazon_eip
+    ansible.amazon.ec2_eip:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      state: present
+      in_vpc: true
+      reuse_existing_ip_allowed: true
+      tag_name: Team
+      tag_value: Backend
+      public_ipv4_pool: amazon
+  - assert:
+      that:
+      - amazon_eip is defined
+      - amazon_eip.public_ip is defined and amazon_eip.public_ip != ""
+      - amazon_eip.allocation_id is defined and amazon_eip.allocation_id != ""
+  - name: allocate a new eip from a pool
+    register: pool_eip
+    ansible.amazon.ec2_eip:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      state: present
+      in_vpc: true
+      public_ipv4_pool: amazon
+  - assert:
+      that:
+      - pool_eip is defined
+      - pool_eip is changed
+      - pool_eip.public_ip is defined and pool_eip.public_ip != ""
+      - pool_eip.allocation_id is defined and pool_eip.allocation_id != ""
+  always:
+  - debug:
+      msg: '{{ item }}'
+    when: item is defined and item.public_ip is defined and item.allocation_id is
+      defined
+    loop:
+    - eip
+    - new_eip
+    - pool_eip
+    - tagged_eip
+    - backend_eip
+    - amazon_eip
+  - name: Cleanup newly allocated eip
+    when: item is defined and item is changed and item.public_ip is defined and item.public_ip
+      != ""
+    loop:
+    - '{{ eip }}'
+    - '{{ new_eip }}'
+    - '{{ pool_eip }}'
+    - '{{ tagged_eip }}'
+    - '{{ backend_eip }}'
+    - '{{ amazon_eip }}'
+    ansible.amazon.ec2_eip:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      state: absent
+      public_ip: '{{ item.public_ip }}'
+      in_vpc: true

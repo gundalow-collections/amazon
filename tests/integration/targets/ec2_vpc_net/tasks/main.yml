@@ -1,0 +1,319 @@
+- block:
+  - name: run the module without parameters
+    ignore_errors: true
+    register: result
+    ansible.amazon.ec2_vpc_net: null
+  - name: assert failure
+    assert:
+      that:
+      - result is failed
+      - result.msg.startswith("missing required arguments")
+  - name: attempt to create a VPC without providing connnection information
+    ignore_errors: true
+    register: result
+    ansible.amazon.ec2_vpc_net:
+      cidr_block: 20.0.0.0/24
+      name: '{{ resource_prefix }}'
+      state: present
+      region: us-east-1
+  - name: assert connection failure
+    assert:
+      that:
+      - result is failed
+      - '"Unable to locate credentials" in result.msg'
+  - name: set connection information for subsequent tasks
+    set_fact:
+      aws_connection_info:
+        aws_access_key: '{{ aws_access_key }}'
+        aws_secret_key: '{{ aws_secret_key }}'
+        security_token: '{{ security_token }}'
+        region: '{{ aws_region }}'
+    no_log: true
+  - name: test check mode creating a VPC
+    check_mode: true
+    register: result
+    ansible.amazon.ec2_vpc_net:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      cidr_block: 20.0.0.0/24
+      name: '{{ resource_prefix }}'
+      state: present
+  - name: check for a change
+    assert:
+      that:
+      - result.changed
+  - name: create a VPC
+    register: result
+    ansible.amazon.ec2_vpc_net:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      cidr_block: 20.0.0.0/24
+      ipv6_cidr: true
+      name: '{{ resource_prefix }}'
+      state: present
+  - name: assert the VPC was created successfully
+    assert:
+      that:
+      - result is successful
+      - result.changed
+  - name: assert the output
+    assert:
+      that:
+      - '"cidr_block" in result.vpc'
+      - '"ipv6_cidr_block_association_set" in result.vpc'
+      - '"classic_link_enabled" in result.vpc'
+      - '"dhcp_options_id" in result.vpc'
+      - '"id" in result.vpc'
+      - '"instance_tenancy" in result.vpc'
+      - '"is_default" in result.vpc'
+      - '"state" in result.vpc'
+      - '"tags" in result.vpc'
+  - name: set the first VPC's details as facts for comparison and cleanup
+    set_fact:
+      vpc_1: '{{ result.vpc.id }}'
+      vpc_1_ipv6_cidr: '{{ result.vpc.ipv6_cidr_block_association_set.0.ipv6_cidr_block
+        }}'
+  - name: save default dhcp_options_id for later comparison
+    set_fact:
+      default_dhcp_options_id: '{{ result.vpc.dhcp_options_id }}'
+  - name: Try to add IPv6 CIDR when one already exists
+    register: result
+    ansible.amazon.ec2_vpc_net:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      cidr_block: 20.0.0.0/24
+      ipv6_cidr: true
+      name: '{{ resource_prefix }}'
+      state: present
+      multi_ok: false
+  - name: Assert no changes made
+    assert:
+      that:
+      - '"Only one IPv6 CIDR is permitted per VPC, {{ result.vpc.id }} already has
+        CIDR {{ vpc_1_ipv6_cidr }}" in result.warnings'
+      - not result.changed
+  - name: test check mode creating an identical VPC
+    check_mode: true
+    register: result
+    ansible.amazon.ec2_vpc_net:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      cidr_block: 20.0.0.0/24
+      ipv6_cidr: true
+      name: '{{ resource_prefix }}'
+      state: present
+      multi_ok: true
+  - name: assert a change would be made
+    assert:
+      that:
+      - result.changed
+  - name: create a VPC with a dedicated tenancy using the same CIDR and name
+    register: result
+    ansible.amazon.ec2_vpc_net:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      cidr_block: 20.0.0.0/24
+      name: '{{ resource_prefix }}'
+      ipv6_cidr: true
+      tenancy: dedicated
+      state: present
+      multi_ok: true
+  - name: assert a new VPC was created
+    assert:
+      that:
+      - result is successful
+      - result.changed
+      - result.vpc.instance_tenancy == "dedicated"
+      - result.vpc.id != vpc_1
+  - name: attempt to create another VPC with the same CIDR and name without multi_ok
+    register: result
+    ignore_errors: true
+    ansible.amazon.ec2_vpc_net:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      cidr_block: 20.0.0.0/24
+      ipv6_cidr: true
+      name: '{{ resource_prefix }}'
+      state: present
+      multi_ok: false
+  - name: assert failure
+    assert:
+      that:
+      - result is failed
+      - '"If you would like to create the VPC anyway please pass True to the multi_ok
+        param" in result.msg'
+  - name: remove Name tag on vpc_1
+    ansible.amazon.ec2_tag:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      resource: '{{ vpc_1 }}'
+      state: absent
+      tags:
+        Name: '{{ resource_prefix }}'
+  - name: add a unique name tag
+    ansible.amazon.ec2_tag:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      resource: '{{ vpc_1 }}'
+      state: present
+      tags:
+        Name: '{{ resource_prefix }}-changed'
+  - name: delete one of the VPCs
+    register: result
+    ansible.amazon.ec2_vpc_net:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      cidr_block: 20.0.0.0/24
+      name: '{{ resource_prefix }}-changed'
+      state: absent
+  - name: assert success
+    assert:
+      that:
+      - result.changed
+      - not result.vpc
+  - name: attempt to delete a VPC that doesn't exist
+    register: result
+    ansible.amazon.ec2_vpc_net:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      cidr_block: 20.0.0.0/24
+      name: '{{ resource_prefix }}-changed'
+      state: absent
+  - name: assert no changes were made
+    assert:
+      that:
+      - not result.changed
+      - not result.vpc
+  - name: create a DHCP option set to use in next test
+    register: new_dhcp
+    ansible.amazon.ec2_vpc_dhcp_option:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      dns_servers:
+      - 4.4.4.4
+      - 8.8.8.8
+      tags:
+        Name: '{{ resource_prefix }}'
+  - name: modify the DHCP options set for a VPC
+    register: result
+    ansible.amazon.ec2_vpc_net:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      cidr_block: 20.0.0.0/24
+      name: '{{ resource_prefix }}'
+      state: present
+      multi_ok: false
+      dhcp_opts_id: '{{ new_dhcp.dhcp_options_id }}'
+  - name: assert the DHCP option set changed
+    assert:
+      that:
+      - result.changed
+      - default_dhcp_options_id != result.vpc.dhcp_options_id
+  - name: modify classic_link_enabled
+    register: result
+    ansible.amazon.ec2_vpc_net:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      cidr_block: 20.0.0.0/24
+      name: '{{ resource_prefix }}'
+      dns_support: true
+      dns_hostnames: true
+      state: present
+      multi_ok: false
+  - name: assert a change was made
+    assert:
+      that:
+      - result is successful
+  - name: modify tags
+    register: result
+    ansible.amazon.ec2_vpc_net:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      cidr_block: 20.0.0.0/24
+      name: '{{ resource_prefix }}'
+      dns_support: true
+      dns_hostnames: true
+      state: present
+      multi_ok: false
+      tags:
+        Ansible: Test
+  - name: assert the VPC has Name and Ansible tags
+    assert:
+      that:
+      - result.vpc.tags|length == 2
+      - result.vpc.tags.Ansible == "Test"
+      - result.vpc.tags.Name == "{{ resource_prefix }}"
+  - name: test check mode to delete a VPC
+    check_mode: true
+    register: result
+    ansible.amazon.ec2_vpc_net:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      cidr_block: 20.0.0.0/24
+      name: '{{ resource_prefix }}'
+      state: absent
+  - name: assert that a change would have been made
+    assert:
+      that:
+      - result.changed
+  always:
+  - name: replace the DHCP options set so the new one can be deleted
+    ignore_errors: true
+    ansible.amazon.ec2_vpc_net:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      cidr_block: 20.0.0.0/24
+      name: '{{ resource_prefix }}'
+      state: present
+      multi_ok: false
+      dhcp_opts_id: '{{ default_dhcp_options_id }}'
+  - name: remove the DHCP option set
+    ignore_errors: true
+    ansible.amazon.ec2_vpc_dhcp_option:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      dhcp_options_id: '{{ new_dhcp.dhcp_options_id }}'
+      state: absent
+  - name: remove the VPC
+    ansible.amazon.ec2_vpc_net:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      cidr_block: 20.0.0.0/24
+      name: '{{ resource_prefix }}'
+      state: absent

@@ -1,0 +1,465 @@
+- block:
+  - name: set connection information for all tasks
+    set_fact:
+      aws_connection_info:
+        aws_access_key: '{{ aws_access_key }}'
+        aws_secret_key: '{{ aws_secret_key }}'
+        security_token: '{{ security_token }}'
+        region: '{{ aws_region }}'
+    no_log: true
+  - name: Create simple s3_bucket
+    register: output
+    ansible.amazon.s3_bucket:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ resource_prefix }}-testbucket-ansible'
+      state: present
+  - assert:
+      that:
+      - output.changed
+      - output.name == '{{ resource_prefix }}-testbucket-ansible'
+      - not output.requester_pays
+  - name: Create a lifecycle policy
+    register: output
+    ansible.amazon.s3_lifecycle:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ resource_prefix }}-testbucket-ansible'
+      expiration_days: 300
+      prefix: ''
+  - assert:
+      that:
+      - output is changed
+  - name: Create a lifecycle policy (idempotency)
+    register: output
+    ansible.amazon.s3_lifecycle:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ resource_prefix }}-testbucket-ansible'
+      expiration_days: 300
+  - assert:
+      that:
+      - output is not changed
+  - name: Create a second lifecycle policy
+    register: output
+    ansible.amazon.s3_lifecycle:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ resource_prefix }}-testbucket-ansible'
+      transition_days: 30
+      prefix: /something
+  - assert:
+      that:
+      - output is changed
+  - name: Create a second lifecycle policy (idempotency)
+    register: output
+    ansible.amazon.s3_lifecycle:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ resource_prefix }}-testbucket-ansible'
+      transition_days: 30
+      prefix: /something
+  - assert:
+      that:
+      - output is not changed
+  - name: Disable the second lifecycle policy
+    register: output
+    ansible.amazon.s3_lifecycle:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ resource_prefix }}-testbucket-ansible'
+      status: disabled
+      transition_days: 30
+      prefix: /something
+  - assert:
+      that:
+      - output is changed
+  - name: Disable the second lifecycle policy (idempotency)
+    register: output
+    ansible.amazon.s3_lifecycle:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ resource_prefix }}-testbucket-ansible'
+      status: disabled
+      transition_days: 30
+      prefix: /something
+  - assert:
+      that:
+      - output is not changed
+  - name: Re-enable the second lifecycle policy
+    register: output
+    ansible.amazon.s3_lifecycle:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ resource_prefix }}-testbucket-ansible'
+      status: enabled
+      transition_days: 300
+      prefix: /something
+  - assert:
+      that:
+      - output is changed
+  - name: Re-enable the second lifecycle policy (idempotency)
+    register: output
+    ansible.amazon.s3_lifecycle:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ resource_prefix }}-testbucket-ansible'
+      status: enabled
+      transition_days: 300
+      prefix: /something
+  - assert:
+      that:
+      - output is not changed
+  - name: Delete the second lifecycle policy
+    register: output
+    ansible.amazon.s3_lifecycle:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ resource_prefix }}-testbucket-ansible'
+      state: absent
+      prefix: /something
+  - assert:
+      that:
+      - output is changed
+  - name: Delete the second lifecycle policy (idempotency)
+    register: output
+    ansible.amazon.s3_lifecycle:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ resource_prefix }}-testbucket-ansible'
+      state: absent
+      prefix: /something
+  - assert:
+      that:
+      - output is not changed
+  - name: Create a second lifecycle policy, with infrequent access
+    register: output
+    ansible.amazon.s3_lifecycle:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ resource_prefix }}-testbucket-ansible'
+      transition_days: 30
+      storage_class: standard_ia
+      prefix: /something
+  - assert:
+      that:
+      - output is changed
+  - name: Create a second lifecycle policy, with infrequent access (idempotency)
+    register: output
+    ansible.amazon.s3_lifecycle:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ resource_prefix }}-testbucket-ansible'
+      storage_class: standard_ia
+      transition_days: 30
+      prefix: /something
+  - assert:
+      that:
+      - output is not changed
+  - name: Create a second lifecycle policy, with glacier
+    register: output
+    ansible.amazon.s3_lifecycle:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ resource_prefix }}-testbucket-ansible'
+      transition_days: 300
+      prefix: /something
+  - assert:
+      that:
+      - output is changed
+  - name: Create a second lifecycle policy, with glacier (idempotency)
+    register: output
+    ansible.amazon.s3_lifecycle:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ resource_prefix }}-testbucket-ansible'
+      transition_days: 300
+      prefix: /something
+  - assert:
+      that:
+      - output is not changed
+  - name: Create a lifecycle policy with infrequent access
+    register: output
+    ansible.amazon.s3_lifecycle:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ resource_prefix }}-testbucket-ansible'
+      transition_days: 30
+      storage_class: standard_ia
+      prefix: /something
+  - name: Create a second lifecycle policy, with glacier
+    register: output
+    ansible.amazon.s3_lifecycle:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ resource_prefix }}-testbucket-ansible'
+      transition_days: 300
+      prefix: /something
+      purge_transitions: false
+  - name: Create a lifecycle policy with infrequent access (idempotency)
+    register: output
+    ansible.amazon.s3_lifecycle:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ resource_prefix }}-testbucket-ansible'
+      storage_class: standard_ia
+      transition_days: 30
+      prefix: /something
+      purge_transitions: false
+  - assert:
+      that:
+      - output is not changed
+  - name: Create a second lifecycle policy, with glacier (idempotency)
+    register: output
+    ansible.amazon.s3_lifecycle:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ resource_prefix }}-testbucket-ansible'
+      transition_days: 300
+      prefix: /something
+      purge_transitions: false
+  - assert:
+      that:
+      - output is not changed
+  - name: Create a lifecycle policy, with noncurrent expiration
+    register: output
+    ansible.amazon.s3_lifecycle:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ resource_prefix }}-testbucket-ansible'
+      noncurrent_version_expiration_days: 300
+      prefix: /something
+  - assert:
+      that:
+      - output is changed
+  - name: Create a lifecycle policy, with noncurrent expiration
+    register: output
+    ansible.amazon.s3_lifecycle:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ resource_prefix }}-testbucket-ansible'
+      noncurrent_version_expiration_days: 300
+      prefix: /something
+  - assert:
+      that:
+      - output is not changed
+  - name: Create a lifecycle policy, with noncurrent transition
+    register: output
+    ansible.amazon.s3_lifecycle:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ resource_prefix }}-testbucket-ansible'
+      noncurrent_version_transition_days: 300
+      prefix: /something
+  - assert:
+      that:
+      - output is changed
+  - name: Create a lifecycle policy, with noncurrent transitions and expirations
+    register: output
+    ansible.amazon.s3_lifecycle:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ resource_prefix }}-testbucket-ansible'
+      noncurrent_version_transition_days: 300
+      prefix: /something
+  - assert:
+      that:
+      - output is not changed
+  - name: Create a lifecycle policy, with noncurrent transition
+    register: output
+    ansible.amazon.s3_lifecycle:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ resource_prefix }}-testbucket-ansible'
+      noncurrent_version_transition_days: 300
+      noncurrent_version_storage_class: standard_ia
+      prefix: /something
+  - assert:
+      that:
+      - output is changed
+  - name: Create a lifecycle policy, with noncurrent transitions and expirations
+    register: output
+    ansible.amazon.s3_lifecycle:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ resource_prefix }}-testbucket-ansible'
+      noncurrent_version_storage_class: standard_ia
+      noncurrent_version_transition_days: 300
+      prefix: /something
+  - assert:
+      that:
+      - output is not changed
+  - name: Create a lifecycle policy, with noncurrent transitions
+    register: output
+    ansible.amazon.s3_lifecycle:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ resource_prefix }}-testbucket-ansible'
+      noncurrent_version_transitions:
+      - transition_days: 30
+        storage_class: standard_ia
+      - transition_days: 60
+        storage_class: onezone_ia
+      - transition_days: 90
+        storage_class: glacier
+      prefix: /something
+  - assert:
+      that:
+      - output is changed
+  - name: Create a lifecycle policy, with noncurrent transitions
+    register: output
+    ansible.amazon.s3_lifecycle:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ resource_prefix }}-testbucket-ansible'
+      noncurrent_version_transitions:
+      - transition_days: 30
+        storage_class: standard_ia
+      - transition_days: 60
+        storage_class: onezone_ia
+      - transition_days: 90
+        storage_class: glacier
+      prefix: /something
+  - assert:
+      that:
+      - output is not changed
+  - ansible.amazon.s3_lifecycle:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ resource_prefix }}-testbucket-ansible'
+      expiration_days: 30
+      prefix: /logs/
+      status: enabled
+      state: present
+  - ansible.amazon.s3_lifecycle:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ resource_prefix }}-testbucket-ansible'
+      transition_days: 7
+      expiration_days: 90
+      prefix: /logs/
+      status: enabled
+      state: present
+  - ansible.amazon.s3_lifecycle:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ resource_prefix }}-testbucket-ansible'
+      transition_date: '2020-12-30T00:00:00.000Z'
+      expiration_date: '2030-12-30T00:00:00.000Z'
+      prefix: /logs/
+      status: enabled
+      state: present
+  - ansible.amazon.s3_lifecycle:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ resource_prefix }}-testbucket-ansible'
+      prefix: /logs/
+      status: disabled
+      state: present
+  - ansible.amazon.s3_lifecycle:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ resource_prefix }}-testbucket-ansible'
+      prefix: /logs/
+      state: absent
+  - ansible.amazon.s3_lifecycle:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ resource_prefix }}-testbucket-ansible'
+      prefix: /backups/
+      storage_class: standard_ia
+      transition_days: 31
+      state: present
+      status: enabled
+  - ansible.amazon.s3_lifecycle:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ resource_prefix }}-testbucket-ansible'
+      prefix: /other_logs/
+      state: present
+      status: enabled
+      transitions:
+      - transition_days: 30
+        storage_class: standard_ia
+      - transition_days: 90
+        storage_class: glacier
+  always:
+  - name: Ensure all buckets are deleted
+    ignore_errors: true
+    with_items:
+    - '{{ resource_prefix }}-testbucket-ansible'
+    ansible.amazon.s3_bucket:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{item}}'
+      state: absent

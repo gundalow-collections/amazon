@@ -1,0 +1,373 @@
+- name: set up aws connection info
+  set_fact:
+    aws_connection_info:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+  no_log: true
+- name: test add identity policy
+  block:
+  - name: register identity
+    register: identity_info
+    ansible.amazon.aws_ses_identity:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      identity: '{{ domain_identity }}'
+      state: present
+  - name: register identity policy
+    register: result
+    ansible.amazon.aws_ses_identity_policy:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      identity: '{{ domain_identity }}'
+      policy_name: '{{ policy_name }}'
+      policy: '{{ lookup(''template'', ''policy.json.j2'') }}'
+      state: present
+  - name: assert result.changed == True
+    assert:
+      that:
+      - result.changed == True
+  - name: assert result.policies contains only policy
+    assert:
+      that:
+      - result.policies|length == 1
+      - result.policies|select('equalto', policy_name)|list|length == 1
+  always:
+  - name: clean-up identity
+    ansible.amazon.aws_ses_identity:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      identity: '{{ domain_identity }}'
+      state: absent
+- name: test add duplicate identity policy
+  block:
+  - name: register identity
+    register: identity_info
+    ansible.amazon.aws_ses_identity:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      identity: '{{ domain_identity }}'
+      state: present
+  - name: register identity policy
+    ansible.amazon.aws_ses_identity_policy:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      identity: '{{ domain_identity }}'
+      policy_name: '{{ policy_name }}'
+      policy: '{{ lookup(''template'', ''policy.json.j2'') }}'
+      state: present
+  - name: register duplicate identity policy
+    register: result
+    ansible.amazon.aws_ses_identity_policy:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      identity: '{{ domain_identity }}'
+      policy_name: '{{ policy_name }}'
+      policy: '{{ lookup(''template'', ''policy.json.j2'') }}'
+      state: present
+  - name: assert result.changed == False
+    assert:
+      that:
+      - result.changed == False
+  - name: assert result.policies contains only policy
+    assert:
+      that:
+      - result.policies|length == 1
+      - result.policies|select('equalto', policy_name)|list|length == 1
+  always:
+  - name: clean-up identity
+    ansible.amazon.aws_ses_identity:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      identity: '{{ domain_identity }}'
+      state: absent
+- name: test add identity policy by identity arn
+  block:
+  - name: register identity
+    register: identity_info
+    ansible.amazon.aws_ses_identity:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      identity: '{{ domain_identity }}'
+      state: present
+  - name: register identity policy
+    register: result
+    ansible.amazon.aws_ses_identity_policy:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      identity: '{{ identity_info.identity_arn }}'
+      policy_name: '{{ policy_name }}'
+      policy: '{{ lookup(''template'', ''policy.json.j2'') }}'
+      state: present
+  - name: assert result.changed == True
+    assert:
+      that:
+      - result.changed == True
+  - name: assert result.policies contains only policy
+    assert:
+      that:
+      - result.policies|length == 1
+      - result.policies|select('equalto', policy_name)|list|length == 1
+  always:
+  - name: clean-up identity
+    ansible.amazon.aws_ses_identity:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      identity: '{{ domain_identity }}'
+      state: absent
+- name: test add multiple identity policies
+  block:
+  - name: register identity
+    register: identity_info
+    ansible.amazon.aws_ses_identity:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      identity: '{{ domain_identity }}'
+      state: present
+  - name: register identity policy
+    with_items:
+    - 1
+    - 2
+    register: result
+    ansible.amazon.aws_ses_identity_policy:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      identity: '{{ domain_identity }}'
+      policy_name: '{{ policy_name }}-{{ item }}'
+      policy: '{{ lookup(''template'', ''policy.json.j2'') }}'
+      state: present
+  - name: assert result.policies contains policies
+    assert:
+      that:
+      - result.results[1].policies|length == 2
+      - result.results[1].policies|select('equalto', policy_name + '-1')|list|length
+        == 1
+      - result.results[1].policies|select('equalto', policy_name + '-2')|list|length
+        == 1
+  always:
+  - name: clean-up identity
+    ansible.amazon.aws_ses_identity:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      identity: '{{ domain_identity }}'
+      state: absent
+- name: test add inline identity policy
+  block:
+  - name: register identity
+    register: identity_info
+    ansible.amazon.aws_ses_identity:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      identity: '{{ domain_identity }}'
+      state: present
+  - name: register identity policy
+    register: result
+    ansible.amazon.aws_ses_identity_policy:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      identity: '{{ domain_identity }}'
+      policy_name: '{{ policy_name }}'
+      policy:
+        Id: SampleAuthorizationPolicy
+        Version: '2012-10-17'
+        Statement:
+        - Sid: DenyAll
+          Effect: Deny
+          Resource: '{{ identity_info.identity_arn }}'
+          Principal: '*'
+          Action: '*'
+      state: present
+  - name: assert result.changed == True
+    assert:
+      that:
+      - result.changed == True
+  - name: assert result.policies contains only policy
+    assert:
+      that:
+      - result.policies|length == 1
+      - result.policies|select('equalto', policy_name)|list|length == 1
+  - name: register duplicate identity policy
+    register: result
+    ansible.amazon.aws_ses_identity_policy:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      identity: '{{ domain_identity }}'
+      policy_name: '{{ policy_name }}'
+      policy:
+        Id: SampleAuthorizationPolicy
+        Version: '2012-10-17'
+        Statement:
+        - Sid: DenyAll
+          Effect: Deny
+          Resource: '{{ identity_info.identity_arn }}'
+          Principal: '*'
+          Action: '*'
+      state: present
+  - name: assert result.changed == False
+    assert:
+      that:
+      - result.changed == False
+  always:
+  - name: clean-up identity
+    ansible.amazon.aws_ses_identity:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      identity: '{{ domain_identity }}'
+      state: absent
+- name: test remove identity policy
+  block:
+  - name: register identity
+    register: identity_info
+    ansible.amazon.aws_ses_identity:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      identity: '{{ domain_identity }}'
+      state: present
+  - name: register identity policy
+    ansible.amazon.aws_ses_identity_policy:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      identity: '{{ domain_identity }}'
+      policy_name: '{{ policy_name }}'
+      policy: '{{ lookup(''template'', ''policy.json.j2'') }}'
+      state: present
+  - name: delete identity policy
+    register: result
+    ansible.amazon.aws_ses_identity_policy:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      identity: '{{ domain_identity }}'
+      policy_name: '{{ policy_name }}'
+      state: absent
+  - name: assert result.changed == True
+    assert:
+      that:
+      - result.changed == True
+  - name: assert result.policies empty
+    assert:
+      that:
+      - result.policies|length == 0
+  always:
+  - name: clean-up identity
+    ansible.amazon.aws_ses_identity:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      identity: '{{ domain_identity }}'
+      state: absent
+- name: test remove missing identity policy
+  block:
+  - name: register identity
+    register: identity_info
+    ansible.amazon.aws_ses_identity:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      identity: '{{ domain_identity }}'
+      state: present
+  - name: delete identity policy
+    register: result
+    ansible.amazon.aws_ses_identity_policy:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      identity: '{{ domain_identity }}'
+      policy_name: '{{ policy_name }}'
+      state: absent
+  - name: assert result.changed == False
+    assert:
+      that:
+      - result.changed == False
+  - name: assert result.policies empty
+    assert:
+      that:
+      - result.policies|length == 0
+  always:
+  - name: clean-up identity
+    ansible.amazon.aws_ses_identity:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      identity: '{{ domain_identity }}'
+      state: absent
+- name: test add identity policy with invalid policy
+  block:
+  - name: register identity
+    register: identity_info
+    ansible.amazon.aws_ses_identity:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      identity: '{{ domain_identity }}'
+      state: present
+  - name: register identity policy
+    register: result
+    failed_when: result.failed == False
+    ansible.amazon.aws_ses_identity_policy:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      identity: '{{ domain_identity }}'
+      policy_name: '{{ policy_name }}'
+      policy: '{"noSuchAttribute": 2}'
+      state: present
+  - name: assert error.code == InvalidPolicy
+    assert:
+      that:
+      - result.error.code == 'InvalidPolicy'
+  always:
+  - name: clean-up identity
+    ansible.amazon.aws_ses_identity:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      identity: '{{ domain_identity }}'
+      state: absent

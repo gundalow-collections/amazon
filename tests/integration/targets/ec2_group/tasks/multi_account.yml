@@ -1,0 +1,127 @@
+- block:
+  - register: caller_facts
+    ansible.amazon.aws_caller_info: null
+  - name: create a VPC
+    register: vpc_result_2
+    ansible.amazon.ec2_vpc_net:
+      name: '{{ resource_prefix }}-vpc-2'
+      state: present
+      cidr_block: 10.232.233.128/26
+      tags:
+        Description: Created by ansible-test
+  - name: Peer the secondary-VPC to the main VPC
+    register: peer_origin
+    ansible.amazon.ec2_vpc_peer:
+      vpc_id: '{{ vpc_result_2.vpc.id }}'
+      peer_vpc_id: '{{ vpc_result.vpc.id }}'
+      peer_owner_id: '{{ caller_facts.account }}'
+      peer_region: '{{ aws_region }}'
+  - name: Accept the secondary-VPC peering connection in the main VPC
+    ansible.amazon.ec2_vpc_peer:
+      peer_vpc_id: '{{ vpc_result_2.vpc.id }}'
+      vpc_id: '{{ vpc_result.vpc.id }}'
+      state: accept
+      peering_id: '{{ peer_origin.peering_id }}'
+      peer_owner_id: '{{ caller_facts.account }}'
+      peer_region: '{{ aws_region }}'
+  - name: Create group in second VPC
+    register: external
+    ansible.amazon.ec2_group:
+      name: '{{ ec2_group_name }}-external'
+      description: '{{ ec2_group_description }}'
+      vpc_id: '{{ vpc_result_2.vpc.id }}'
+      state: present
+      rules:
+      - proto: tcp
+        cidr_ip: 0.0.0.0/0
+        ports:
+        - 80
+        rule_desc: http whoo
+  - name: Create group in internal VPC
+    ansible.amazon.ec2_group:
+      name: '{{ ec2_group_name }}-internal'
+      description: '{{ ec2_group_description }}'
+      vpc_id: '{{ vpc_result.vpc.id }}'
+      state: present
+      rules:
+      - proto: tcp
+        group_id: '{{ caller_facts.account }}/{{ external.group_id }}/{{ ec2_group_name
+          }}-external'
+        ports:
+        - 80
+  - name: Re-make same rule, expecting changed=false in internal VPC
+    register: out
+    ansible.amazon.ec2_group:
+      name: '{{ ec2_group_name }}-internal'
+      description: '{{ ec2_group_description }}'
+      vpc_id: '{{ vpc_result.vpc.id }}'
+      state: present
+      rules:
+      - proto: tcp
+        group_id: '{{ caller_facts.account }}/{{ external.group_id }}/{{ ec2_group_name
+          }}-external'
+        ports:
+        - 80
+  - assert:
+      that:
+      - out is not changed
+  - name: Try again with a bad group_id group in internal VPC
+    register: out
+    ignore_errors: true
+    ansible.amazon.ec2_group:
+      name: '{{ ec2_group_name }}-internal'
+      description: '{{ ec2_group_description }}'
+      vpc_id: '{{ vpc_result.vpc.id }}'
+      state: present
+      rules:
+      - proto: tcp
+        group_id: '{{ external.group_id }}/{{ caller_facts.account }}/{{ ec2_group_name
+          }}-external'
+        ports:
+        - 80
+  - assert:
+      that:
+      - out is failed
+  always:
+  - pause: seconds=5
+  - name: Delete secondary-VPC side of peer
+    ignore_errors: true
+    ansible.amazon.ec2_vpc_peer:
+      vpc_id: '{{ vpc_result_2.vpc.id }}'
+      peer_vpc_id: '{{ vpc_result.vpc.id }}'
+      peering_id: '{{ peer_origin.peering_id }}'
+      state: absent
+      peer_owner_id: '{{ caller_facts.account }}'
+      peer_region: '{{ aws_region }}'
+  - name: Delete main-VPC side of peer
+    ignore_errors: true
+    ansible.amazon.ec2_vpc_peer:
+      peer_vpc_id: '{{ vpc_result_2.vpc.id }}'
+      vpc_id: '{{ vpc_result.vpc.id }}'
+      state: absent
+      peering_id: '{{ peer_origin.peering_id }}'
+      peer_owner_id: '{{ caller_facts.account }}'
+      peer_region: '{{ aws_region }}'
+  - name: Clean up group in second VPC
+    ignore_errors: true
+    ansible.amazon.ec2_group:
+      name: '{{ ec2_group_name }}-external'
+      description: '{{ ec2_group_description }}'
+      state: absent
+      vpc_id: '{{ vpc_result_2.vpc.id }}'
+  - name: Clean up group in second VPC
+    ignore_errors: true
+    ansible.amazon.ec2_group:
+      name: '{{ ec2_group_name }}-internal'
+      description: '{{ ec2_group_description }}'
+      state: absent
+      vpc_id: '{{ vpc_result.vpc.id }}'
+  - name: tidy up VPC
+    ignore_errors: true
+    register: removed
+    retries: 10
+    until: removed is not failed
+    ansible.amazon.ec2_vpc_net:
+      name: '{{ resource_prefix }}-vpc-2'
+      state: absent
+      cidr_block: 10.232.233.128/26

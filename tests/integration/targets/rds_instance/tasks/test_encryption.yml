@@ -1,0 +1,55 @@
+- block:
+  - name: set up aws connection info
+    set_fact:
+      aws_connection_info:
+        aws_access_key: '{{ aws_access_key }}'
+        aws_secret_key: '{{ aws_secret_key }}'
+        security_token: '{{ security_token }}'
+        region: '{{ aws_region }}'
+    no_log: true
+  - name: Ensure the resource doesn't exist
+    register: result
+    ansible.amazon.rds_instance:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      id: '{{ instance_id }}'
+      state: absent
+      skip_final_snapshot: true
+  - assert:
+      that:
+      - not result.changed
+    ignore_errors: true
+  - name: Create a mariadb instance
+    register: result
+    ansible.amazon.rds_instance:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      id: '{{ instance_id }}'
+      state: present
+      engine: mariadb
+      username: '{{ username }}'
+      password: '{{ password }}'
+      db_instance_class: '{{ storage_encrypted_db_instance_class }}'
+      allocated_storage: '{{ allocated_storage }}'
+      storage_encrypted: true
+  - assert:
+      that:
+      - result.changed
+      - result.db_instance_identifier == '{{ instance_id }}'
+      - result.kms_key_id
+      - result.storage_encrypted == true
+  always:
+  - name: Delete DB instance
+    register: result
+    ansible.amazon.rds_instance:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      id: '{{ instance_id }}'
+      state: absent
+      skip_final_snapshot: true

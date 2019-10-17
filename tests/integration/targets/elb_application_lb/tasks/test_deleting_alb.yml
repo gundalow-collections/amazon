@@ -1,0 +1,53 @@
+- block:
+  - name: set connection information for all tasks
+    set_fact:
+      aws_connection_info:
+        aws_access_key: '{{ aws_access_key }}'
+        aws_secret_key: '{{ aws_secret_key }}'
+        security_token: '{{ security_token }}'
+        region: '{{ aws_region }}'
+    no_log: true
+  - name: destroy ALB with listener
+    register: alb
+    ansible.amazon.elb_application_lb:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ alb_name }}'
+      subnets: '{{ alb_subnets }}'
+      security_groups: '{{ sec_group.group_id }}'
+      state: absent
+      listeners:
+      - Protocol: HTTP
+        Port: 80
+        DefaultActions:
+        - Type: forward
+          TargetGroupName: '{{ tg_name }}'
+      wait: true
+      wait_timeout: 300
+  - assert:
+      that:
+      - alb.changed
+  - name: test idempotence
+    register: alb
+    ansible.amazon.elb_application_lb:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ alb_name }}'
+      subnets: '{{ alb_subnets }}'
+      security_groups: '{{ sec_group.group_id }}'
+      state: absent
+      listeners:
+      - Protocol: HTTP
+        Port: 80
+        DefaultActions:
+        - Type: forward
+          TargetGroupName: '{{ tg_name }}'
+      wait: true
+      wait_timeout: 300
+  - assert:
+      that:
+      - not alb.changed

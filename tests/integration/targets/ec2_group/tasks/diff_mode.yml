@@ -1,0 +1,189 @@
+- name: set up aws connection info
+  set_fact:
+    aws_connection_info:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+  no_log: true
+- name: create a group with a rule (CHECK MODE + DIFF)
+  register: check_mode_result
+  check_mode: true
+  diff: true
+  ansible.amazon.ec2_group:
+    aws_access_key: '{{ aws_access_key }}'
+    aws_secret_key: '{{ aws_secret_key }}'
+    security_token: '{{ security_token }}'
+    region: '{{ aws_region }}'
+    name: '{{ ec2_group_name }}'
+    description: '{{ ec2_group_description }}'
+    state: present
+    rules:
+    - proto: tcp
+      from_port: 80
+      to_port: 80
+      cidr_ip: 0.0.0.0/0
+    rules_egress:
+    - proto: all
+      cidr_ip: 0.0.0.0/0
+- assert:
+    that:
+    - check_mode_result.changed
+- name: create a group with a rule (DIFF)
+  register: result
+  diff: true
+  ansible.amazon.ec2_group:
+    aws_access_key: '{{ aws_access_key }}'
+    aws_secret_key: '{{ aws_secret_key }}'
+    security_token: '{{ security_token }}'
+    region: '{{ aws_region }}'
+    name: '{{ ec2_group_name }}'
+    description: '{{ ec2_group_description }}'
+    state: present
+    rules:
+    - proto: tcp
+      from_port: 80
+      to_port: 80
+      cidr_ip: 0.0.0.0/0
+    rules_egress:
+    - proto: all
+      cidr_ip: 0.0.0.0/0
+- assert:
+    that:
+    - result.changed
+    - result.diff.0.after.ip_permissions == check_mode_result.diff.0.after.ip_permissions
+    - result.diff.0.after.ip_permissions_egress == check_mode_result.diff.0.after.ip_permissions_egress
+- name: add rules to make sorting occur (CHECK MODE + DIFF)
+  register: check_mode_result
+  check_mode: true
+  diff: true
+  ansible.amazon.ec2_group:
+    aws_access_key: '{{ aws_access_key }}'
+    aws_secret_key: '{{ aws_secret_key }}'
+    security_token: '{{ security_token }}'
+    region: '{{ aws_region }}'
+    name: '{{ ec2_group_name }}'
+    description: '{{ ec2_group_description }}'
+    state: present
+    rules:
+    - proto: tcp
+      from_port: 80
+      to_port: 80
+      cidr_ip: 0.0.0.0/0
+    - proto: tcp
+      from_port: 22
+      to_port: 22
+      cidr_ip: 20.0.0.0/8
+    - proto: tcp
+      from_port: 22
+      to_port: 22
+      cidr_ip: 10.0.0.0/8
+    rules_egress:
+    - proto: all
+      cidr_ip: 0.0.0.0/0
+- assert:
+    that:
+    - check_mode_result.changed
+- name: add rules in a different order to test sorting consistency (DIFF)
+  register: result
+  diff: true
+  ansible.amazon.ec2_group:
+    aws_access_key: '{{ aws_access_key }}'
+    aws_secret_key: '{{ aws_secret_key }}'
+    security_token: '{{ security_token }}'
+    region: '{{ aws_region }}'
+    name: '{{ ec2_group_name }}'
+    description: '{{ ec2_group_description }}'
+    state: present
+    rules:
+    - proto: tcp
+      from_port: 22
+      to_port: 22
+      cidr_ip: 20.0.0.0/8
+    - proto: tcp
+      from_port: 80
+      to_port: 80
+      cidr_ip: 0.0.0.0/0
+    - proto: tcp
+      from_port: 22
+      to_port: 22
+      cidr_ip: 10.0.0.0/8
+    rules_egress:
+    - proto: all
+      cidr_ip: 0.0.0.0/0
+- assert:
+    that:
+    - result.changed
+    - result.diff.0.after.ip_permissions == check_mode_result.diff.0.after.ip_permissions
+    - result.diff.0.after.ip_permissions_egress == check_mode_result.diff.0.after.ip_permissions_egress
+- name: purge rules (CHECK MODE + DIFF)
+  register: check_mode_result
+  check_mode: true
+  diff: true
+  ansible.amazon.ec2_group:
+    aws_access_key: '{{ aws_access_key }}'
+    aws_secret_key: '{{ aws_secret_key }}'
+    security_token: '{{ security_token }}'
+    region: '{{ aws_region }}'
+    name: '{{ ec2_group_name }}'
+    description: '{{ ec2_group_description }}'
+    state: present
+    rules:
+    - proto: tcp
+      from_port: 80
+      to_port: 80
+      cidr_ip: 0.0.0.0/0
+    rules_egress: []
+- assert:
+    that:
+    - check_mode_result.changed
+- name: purge rules (DIFF)
+  register: result
+  diff: true
+  ansible.amazon.ec2_group:
+    aws_access_key: '{{ aws_access_key }}'
+    aws_secret_key: '{{ aws_secret_key }}'
+    security_token: '{{ security_token }}'
+    region: '{{ aws_region }}'
+    name: '{{ ec2_group_name }}'
+    description: '{{ ec2_group_description }}'
+    state: present
+    rules:
+    - proto: tcp
+      from_port: 80
+      to_port: 80
+      cidr_ip: 0.0.0.0/0
+    rules_egress: []
+- assert:
+    that:
+    - result.changed
+    - result.diff.0.after.ip_permissions == check_mode_result.diff.0.after.ip_permissions
+    - result.diff.0.after.ip_permissions_egress == check_mode_result.diff.0.after.ip_permissions_egress
+- name: delete the security group (CHECK MODE + DIFF)
+  register: check_mode_result
+  diff: true
+  check_mode: true
+  ansible.amazon.ec2_group:
+    aws_access_key: '{{ aws_access_key }}'
+    aws_secret_key: '{{ aws_secret_key }}'
+    security_token: '{{ security_token }}'
+    region: '{{ aws_region }}'
+    name: '{{ ec2_group_name }}'
+    state: absent
+- assert:
+    that:
+    - check_mode_result.changed
+- name: delete the security group (DIFF)
+  register: result
+  diff: true
+  ansible.amazon.ec2_group:
+    aws_access_key: '{{ aws_access_key }}'
+    aws_secret_key: '{{ aws_secret_key }}'
+    security_token: '{{ security_token }}'
+    region: '{{ aws_region }}'
+    name: '{{ ec2_group_name }}'
+    state: absent
+- assert:
+    that:
+    - result.changed
+    - not result.diff.0.after and not check_mode_result.diff.0.after

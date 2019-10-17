@@ -1,0 +1,96 @@
+- name: create a network ACL using subnet IDs
+  register: nacl
+  ansible.amazon.ec2_vpc_nacl:
+    vpc_id: '{{ vpc_id }}'
+    name: '{{ resource_prefix }}-acl'
+    subnets: '{{ subnet_ids }}'
+    state: present
+- name: assert the network acl was created
+  assert:
+    that:
+    - nacl.changed
+    - nacl.nacl_id.startswith('acl-')
+- name: get network ACL facts
+  register: nacl_facts
+  ansible.amazon.ec2_vpc_nacl_info:
+    nacl_ids:
+    - '{{ nacl.nacl_id }}'
+- name: assert the nacl has the correct attributes
+  assert:
+    that:
+    - nacl_facts.nacls[0].tags | length == 1
+    - '''{{ nacl_facts.nacls[0].tags.Name }}'' == ''{{ resource_prefix }}-acl'''
+- name: add a tag
+  register: nacl
+  ansible.amazon.ec2_vpc_nacl:
+    vpc_id: '{{ vpc_id }}'
+    name: '{{ resource_prefix }}-acl'
+    subnets: '{{ subnet_ids }}'
+    tags:
+      Created_by: Ansible test {{ resource_prefix }}
+    state: present
+- name: assert the network acl changed
+  assert:
+    that:
+    - nacl.changed
+- name: get network ACL facts
+  register: nacl_facts
+  ansible.amazon.ec2_vpc_nacl_info:
+    nacl_ids:
+    - '{{ nacl.nacl_id }}'
+- name: assert the facts are the same as before
+  assert:
+    that:
+    - nacl_facts.nacls[0].tags | length == 2
+    - '''{{ nacl_facts.nacls[0].tags.Name }}'' == ''{{ resource_prefix }}-acl'''
+    - '''{{ nacl_facts.nacls[0].tags.Created_by }}'' == ''Ansible test {{ resource_prefix
+      }}'''
+- name: get network ACL facts by filter
+  register: nacl_facts
+  ansible.amazon.ec2_vpc_nacl_info:
+    filters:
+      tag:Created_by: Ansible test {{ resource_prefix }}
+- name: assert the facts are the same as before
+  assert:
+    that:
+    - nacl_facts.nacls | length == 1
+    - nacl_facts.nacls[0].tags | length == 2
+    - '''{{ nacl_facts.nacls[0].tags.Name }}'' == ''{{ resource_prefix }}-acl'''
+    - '''{{ nacl_facts.nacls[0].tags.Created_by }}'' == ''Ansible test {{ resource_prefix
+      }}'''
+- name: remove a tag
+  register: nacl
+  ansible.amazon.ec2_vpc_nacl:
+    vpc_id: '{{ vpc_id }}'
+    name: '{{ resource_prefix }}-acl'
+    subnets: '{{ subnet_ids }}'
+    state: present
+- name: assert the network acl was created
+  assert:
+    that:
+    - nacl.changed
+    - nacl.nacl_id.startswith('acl-')
+- name: get network ACL facts
+  register: nacl_facts
+  ansible.amazon.ec2_vpc_nacl_info:
+    nacl_ids:
+    - '{{ nacl.nacl_id }}'
+- name: assert the nacl has the correct attributes
+  assert:
+    that:
+    - nacl_facts.nacls[0].tags | length == 1
+    - '''{{ nacl_facts.nacls[0].tags.Name }}'' == ''{{ resource_prefix }}-acl'''
+- name: remove the network ACL
+  register: nacl
+  until: nacl is success
+  ignore_errors: true
+  retries: 5
+  delay: 5
+  ansible.amazon.ec2_vpc_nacl:
+    vpc_id: '{{ vpc_id }}'
+    name: '{{ resource_prefix }}-acl'
+    state: absent
+- name: assert nacl was removed
+  assert:
+    that:
+    - nacl.changed

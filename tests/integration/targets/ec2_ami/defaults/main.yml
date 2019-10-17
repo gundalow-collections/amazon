@@ -1,0 +1,5 @@
+ec2_ami_name: '{{resource_prefix}}'
+ec2_ami_description: Created by ansible integration tests
+ec2_ami_image:
+  us-east-1: ami-4fffc834
+  us-east-2: ami-ea87a78f

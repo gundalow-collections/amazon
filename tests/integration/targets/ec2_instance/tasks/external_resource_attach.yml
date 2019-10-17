@@ -1,0 +1,167 @@
+- block:
+  - name: set connection information for all tasks
+    set_fact:
+      aws_connection_info:
+        aws_access_key: '{{ aws_access_key }}'
+        aws_secret_key: '{{ aws_secret_key }}'
+        security_token: '{{ security_token }}'
+        region: '{{ aws_region }}'
+    no_log: true
+  - register: eni_a
+    ansible.amazon.ec2_eni:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      delete_on_termination: true
+      subnet_id: '{{ testing_subnet_b.subnet.id }}'
+      security_groups:
+      - '{{ sg.group_id }}'
+  - register: eni_b
+    ansible.amazon.ec2_eni:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      delete_on_termination: true
+      subnet_id: '{{ testing_subnet_b.subnet.id }}'
+      security_groups:
+      - '{{ sg.group_id }}'
+  - register: eni_c
+    ansible.amazon.ec2_eni:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      delete_on_termination: true
+      subnet_id: '{{ testing_subnet_b.subnet.id }}'
+      security_groups:
+      - '{{ sg.group_id }}'
+  - ansible.amazon.ec2_key:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ resource_prefix }}_test_key'
+  - name: Make instance in the testing subnet created in the test VPC
+    register: in_test_vpc
+    ansible.amazon.ec2_instance:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ resource_prefix }}-test-eni-vpc'
+      key_name: '{{ resource_prefix }}_test_key'
+      network:
+        interfaces:
+        - id: '{{ eni_a.interface.id }}'
+      image_id: '{{ ec2_ami_image[aws_region] }}'
+      availability_zone: '{{ aws_region }}b'
+      tags:
+        TestId: '{{ resource_prefix }}'
+      instance_type: t2.micro
+      wait: false
+  - name: Gather {{ resource_prefix }}-test-eni-vpc info
+    register: in_test_vpc_instance
+    ansible.amazon.ec2_instance_info:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      filters:
+        tag:Name: '{{ resource_prefix }}-test-eni-vpc'
+  - assert:
+      that:
+      - in_test_vpc_instance.instances.0.key_name == "{{ resource_prefix }}_test_key"
+      - (in_test_vpc_instance.instances.0.network_interfaces | length) == 1
+  - name: Add a second interface
+    register: add_interface
+    until: add_interface is not failed
+    ignore_errors: true
+    retries: 10
+    ansible.amazon.ec2_instance:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ resource_prefix }}-test-eni-vpc'
+      network:
+        interfaces:
+        - id: '{{ eni_a.interface.id }}'
+        - id: '{{ eni_b.interface.id }}'
+      image_id: '{{ ec2_ami_image[aws_region] }}'
+      tags:
+        TestId: '{{ resource_prefix }}'
+      instance_type: t2.micro
+      wait: false
+  - name: Make instance in the testing subnet created in the test VPC(check mode)
+    check_mode: true
+    ansible.amazon.ec2_instance:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ resource_prefix }}-test-eni-vpc-checkmode'
+      key_name: '{{ resource_prefix }}_test_key'
+      network:
+        interfaces:
+        - id: '{{ eni_c.interface.id }}'
+      image_id: '{{ ec2_ami_image[aws_region] }}'
+      availability_zone: '{{ aws_region }}b'
+      tags:
+        TestId: '{{ resource_prefix }}'
+      instance_type: t2.micro
+  - name: fact presented ec2 instance
+    register: presented_instance_fact
+    ansible.amazon.ec2_instance_info:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      filters:
+        tag:Name: '{{ resource_prefix }}-test-eni-vpc'
+  - name: fact checkmode ec2 instance
+    register: checkmode_instance_fact
+    ansible.amazon.ec2_instance_info:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      filters:
+        tag:Name: '{{ resource_prefix }}-test-eni-vpc-checkmode'
+  - name: Confirm existence of instance id.
+    assert:
+      that:
+      - '{{ presented_instance_fact.instances | length }} > 0'
+      - '{{ checkmode_instance_fact.instances | length }} == 0'
+  - name: Terminate instance
+    register: result
+    ansible.amazon.ec2_instance:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      filters:
+        tag:TestId: '{{ resource_prefix }}'
+      state: absent
+      wait: false
+  always:
+  - name: Terminate instance
+    register: result
+    ignore_errors: true
+    ansible.amazon.ec2_instance:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      instance_ids: '{{ in_test_vpc.instance_ids }}'
+      state: absent
+      wait: false
+  - ignore_errors: true
+    ansible.amazon.ec2_key:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ resource_prefix }}_test_key'
+      state: absent

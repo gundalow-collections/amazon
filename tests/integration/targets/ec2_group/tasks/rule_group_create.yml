@@ -1,0 +1,159 @@
+- block:
+  - name: set up aws connection info
+    set_fact:
+      aws_connection_info:
+        aws_access_key: '{{ aws_access_key }}'
+        aws_secret_key: '{{ aws_secret_key }}'
+        security_token: '{{ security_token }}'
+        region: '{{ aws_region }}'
+    no_log: true
+  - name: Create a group with self-referring rule
+    register: result
+    ansible.amazon.ec2_group:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ec2_group_name}}-auto-create-1'
+      vpc_id: '{{ vpc_result.vpc.id }}'
+      description: '{{ec2_group_description}}'
+      rules:
+      - proto: tcp
+        from_port: 8000
+        to_port: 8100
+        group_name: '{{ec2_group_name}}-auto-create-1'
+      state: present
+  - name: Create a second group rule
+    ansible.amazon.ec2_group:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ec2_group_name}}-auto-create-2'
+      vpc_id: '{{ vpc_result.vpc.id }}'
+      description: '{{ec2_group_description}}'
+      state: present
+  - name: Create a series of rules with a recently created group as target
+    register: result
+    with_items:
+    - 20
+    - 40
+    - 60
+    - 80
+    ansible.amazon.ec2_group:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ec2_group_name}}-auto-create-1'
+      vpc_id: '{{ vpc_result.vpc.id }}'
+      description: '{{ec2_group_description}}'
+      purge_rules: false
+      rules:
+      - proto: tcp
+        from_port: '{{ item }}'
+        to_port: '{{ item }}'
+        group_name: '{{ec2_group_name}}-auto-create-2'
+      state: present
+  - name: Create a group with only the default rule
+    register: result
+    ignore_errors: true
+    ansible.amazon.ec2_group:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ec2_group_name}}-auto-create-1'
+      vpc_id: '{{ vpc_result.vpc.id }}'
+      description: '{{ec2_group_description}}'
+      rules:
+      - proto: tcp
+        from_port: 8182
+        to_port: 8182
+        group_name: '{{ec2_group_name}}-auto-create-3'
+      state: present
+  - name: assert you can't create a new group from a rule target with no description
+    assert:
+      that:
+      - result is failed
+  - name: Create a group with a target of a separate group
+    register: result
+    ansible.amazon.ec2_group:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ec2_group_name}}-auto-create-1'
+      vpc_id: '{{ vpc_result.vpc.id }}'
+      description: '{{ec2_group_description}}'
+      rules:
+      - proto: tcp
+        ports:
+        - 22
+        - 80
+        group_name: '{{ec2_group_name}}-auto-create-3'
+        group_desc: '{{ec2_group_description}}'
+      state: present
+  - name: Create a 4th group
+    ansible.amazon.ec2_group:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ec2_group_name}}-auto-create-4'
+      vpc_id: '{{ vpc_result.vpc.id }}'
+      description: '{{ec2_group_description}}'
+      state: present
+      rules:
+      - proto: tcp
+        ports:
+        - 22
+        cidr_ip: 0.0.0.0/0
+  - name: use recently created group in a rule
+    ansible.amazon.ec2_group:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ec2_group_name}}-auto-create-5'
+      vpc_id: '{{ vpc_result.vpc.id }}'
+      description: '{{ec2_group_description}}'
+      rules:
+      - proto: tcp
+        ports:
+        - 443
+        group_name: '{{ec2_group_name}}-auto-create-4'
+      state: present
+  always:
+  - name: tidy up egress rule test security group
+    ignore_errors: true
+    with_items:
+    - 5
+    - 4
+    - 3
+    - 2
+    - 1
+    ansible.amazon.ec2_group:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ec2_group_name}}-auto-create-{{ item }}'
+      state: absent
+      vpc_id: '{{ vpc_result.vpc.id }}'
+  - name: tidy up egress rule test security group
+    ignore_errors: true
+    with_items:
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    ansible.amazon.ec2_group:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ec2_group_name}}-auto-create-{{ item }}'
+      state: absent
+      vpc_id: '{{ vpc_result.vpc.id }}'

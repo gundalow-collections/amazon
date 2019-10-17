@@ -1,0 +1,418 @@
+- block:
+  - name: set yaml anchor
+    set_fact:
+      aws_connection_info:
+        aws_access_key: '{{ aws_access_key }}'
+        aws_secret_key: '{{ aws_secret_key }}'
+        security_token: '{{ security_token }}'
+    no_log: true
+  - name: create cloudfront distribution using defaults
+    ansible.amazon.cloudfront_distribution:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      alias: '{{ cloudfront_alias }}'
+      origins:
+      - domain_name: '{{ cloudfront_hostname }}-origin.example.com'
+        id: '{{ cloudfront_hostname }}-origin.example.com'
+      default_cache_behavior:
+        target_origin_id: '{{ cloudfront_hostname }}-origin.example.com'
+      state: present
+      purge_origins: true
+  - name: re-run cloudfront distribution with same defaults
+    register: cf_dist_no_update
+    ansible.amazon.cloudfront_distribution:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      alias: '{{ cloudfront_alias }}'
+      origins:
+      - domain_name: '{{ cloudfront_hostname }}-origin.example.com'
+      state: present
+  - name: ensure distribution was not updated
+    assert:
+      that:
+      - not cf_dist_no_update.changed
+  - name: re-run cloudfront distribution using distribution id
+    register: cf_dist_with_id
+    ansible.amazon.cloudfront_distribution:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      distribution_id: '{{ cf_dist_no_update.id }}'
+      purge_origins: false
+      state: present
+  - name: ensure distribution was not updated
+    assert:
+      that:
+      - not cf_dist_with_id.changed
+  - name: update origin http port
+    register: update_origin_http_port
+    ansible.amazon.cloudfront_distribution:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      alias: '{{ cloudfront_alias }}'
+      origins:
+      - domain_name: '{{ cloudfront_hostname }}-origin.example.com'
+        custom_origin_config:
+          http_port: 8080
+      state: present
+  - name: ensure http port was updated
+    assert:
+      that:
+      - update_origin_http_port.changed
+  - name: update restrictions
+    register: update_restrictions
+    ansible.amazon.cloudfront_distribution:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      alias: '{{ cloudfront_alias }}'
+      restrictions:
+        geo_restriction:
+          restriction_type: whitelist
+          items:
+          - US
+      state: present
+  - name: ensure restrictions was updated
+    assert:
+      that:
+      - update_restrictions.changed
+  - name: set a random comment
+    set_fact:
+      comment: '{{''ABCDEFabcdef123456''|shuffle|join }}'
+  - name: update comment
+    register: cf_comment
+    ansible.amazon.cloudfront_distribution:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      alias: '{{ cloudfront_alias }}'
+      comment: '{{ comment }}'
+      state: present
+  - name: ensure comment was updated
+    assert:
+      that:
+      - cf_comment.changed
+      - cf_comment.comment == comment
+  - name: create second origin
+    register: cf_add_origin
+    ansible.amazon.cloudfront_distribution:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      alias: '{{ cloudfront_alias }}'
+      origins:
+      - domain_name: '{{ resource_prefix }}2.example.com'
+        id: '{{ resource_prefix }}2.example.com'
+      default_root_object: index.html
+      state: present
+      wait: true
+  - name: ensure origin was added
+    assert:
+      that:
+      - cf_add_origin.origins.quantity == 2
+      - cf_add_origin.changed
+      - cf_add_origin.default_root_object == 'index.html'
+  - name: re-run second origin
+    register: cf_rerun_second_origin
+    ansible.amazon.cloudfront_distribution:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      alias: '{{ cloudfront_alias }}'
+      origins:
+      - domain_name: '{{ cloudfront_hostname }}-origin.example.com'
+        custom_origin_config:
+          http_port: 8080
+      - domain_name: '{{ resource_prefix }}2.example.com'
+      default_root_object: index.html
+      wait: true
+      state: present
+  - name: ensure nothing changed after re-run
+    assert:
+      that:
+      - cf_rerun_second_origin.origins.quantity == 2
+      - not cf_rerun_second_origin.changed
+  - name: run with origins in reverse order
+    register: cf_rerun_second_origin_reversed
+    ansible.amazon.cloudfront_distribution:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      alias: '{{ cloudfront_alias }}'
+      origins:
+      - domain_name: '{{ resource_prefix }}2.example.com'
+      - domain_name: '{{ cloudfront_hostname }}-origin.example.com'
+        custom_origin_config:
+          http_port: 8080
+      state: present
+  - name: ensure nothing changed after reversed re-run
+    assert:
+      that:
+      - cf_rerun_second_origin_reversed.origins.quantity == 2
+      - not cf_rerun_second_origin_reversed.changed
+  - name: purge first origin
+    register: cf_purge_origin
+    ansible.amazon.cloudfront_distribution:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      alias: '{{ cloudfront_alias }}'
+      origins:
+      - domain_name: '{{ resource_prefix }}2.example.com'
+      default_cache_behavior:
+        target_origin_id: '{{ resource_prefix }}2.example.com'
+      purge_origins: true
+      state: present
+  - name: ensure origin was removed
+    assert:
+      that:
+      - cf_purge_origin.origins.quantity == 1
+      - cf_purge_origin.changed
+  - name: update default_root_object of existing distribution
+    register: cf_update_default_root_object
+    ansible.amazon.cloudfront_distribution:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      alias: '{{ cloudfront_alias }}'
+      origins:
+      - domain_name: '{{ resource_prefix }}2.example.com'
+      default_root_object: index.php
+      state: present
+  - name: ensure origin was updated
+    assert:
+      that:
+      - cf_update_default_root_object.default_root_object == 'index.php'
+      - cf_update_default_root_object.changed
+  - name: add tags to existing distribution
+    register: cf_add_tags
+    ansible.amazon.cloudfront_distribution:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      alias: '{{ cloudfront_alias }}'
+      origins:
+      - domain_name: '{{ resource_prefix }}2.example.com'
+      tags:
+        Name: '{{ cloudfront_alias }}'
+        Another: tag
+      default_root_object: index.php
+      state: present
+  - name: ensure tags were added
+    assert:
+      that:
+      - cf_add_tags.changed
+      - cf_add_tags.tags|length == 2
+  - name: delete distribution
+    ansible.amazon.cloudfront_distribution:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      alias: '{{ cloudfront_alias }}'
+      enabled: false
+      wait: true
+      state: absent
+  - name: create distribution with tags
+    register: cf_second_distribution
+    ansible.amazon.cloudfront_distribution:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      alias: '{{ cloudfront_alias }}'
+      origins:
+      - domain_name: '{{ resource_prefix }}2.example.com'
+        id: '{{ resource_prefix }}2.example.com'
+      tags:
+        Name: '{{ cloudfront_alias }}'
+        Another: tag
+      state: present
+  - name: ensure tags were set on creation
+    assert:
+      that:
+      - cf_second_distribution.changed
+      - cf_second_distribution.tags|length == 2
+      - '''Name'' in cf_second_distribution.tags'
+  - name: re-run create distribution with same tags and purge_tags
+    register: rerun_with_purge_tags
+    ansible.amazon.cloudfront_distribution:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      alias: '{{ cloudfront_alias }}'
+      origins:
+      - domain_name: '{{ resource_prefix }}2.example.com'
+        id: '{{ resource_prefix }}2.example.com'
+      tags:
+        Name: '{{ cloudfront_alias }}'
+        Another: tag
+      purge_tags: true
+      state: present
+  - name: ensure that re-running didn't change
+    assert:
+      that:
+      - not rerun_with_purge_tags.changed
+  - name: add new tag to distribution
+    register: update_with_new_tag
+    ansible.amazon.cloudfront_distribution:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      alias: '{{ cloudfront_alias }}'
+      origins:
+      - domain_name: '{{ resource_prefix }}2.example.com'
+      tags:
+        Third: thing
+      purge_tags: false
+      state: present
+  - name: ensure tags are correct
+    assert:
+      that:
+      - update_with_new_tag.changed
+      - '''Third'' in update_with_new_tag.tags'
+      - '''Another'' in update_with_new_tag.tags'
+  - name: create some cache behaviors
+    register: add_cache_behaviors
+    ansible.amazon.cloudfront_distribution:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      alias: '{{ cloudfront_alias }}'
+      origins:
+      - domain_name: '{{ resource_prefix }}2.example.com'
+      cache_behaviors: '{{ cloudfront_test_cache_behaviors }}'
+      state: present
+  - name: reverse some cache behaviors
+    register: reverse_cache_behaviors
+    ansible.amazon.cloudfront_distribution:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      alias: '{{ cloudfront_alias }}'
+      origins:
+      - domain_name: '{{ resource_prefix }}2.example.com'
+      cache_behaviors: '{{ cloudfront_test_cache_behaviors|reverse|list }}'
+      state: present
+  - name: check that reversing cache behaviors changes nothing when purge_cache_behaviors
+      unset
+    assert:
+      that:
+      - not reverse_cache_behaviors.changed
+      - reverse_cache_behaviors.cache_behaviors|length == 2
+  - name: reverse some cache behaviors properly
+    register: reverse_cache_behaviors_with_purge
+    ansible.amazon.cloudfront_distribution:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      alias: '{{ cloudfront_alias }}'
+      origins:
+      - domain_name: '{{ resource_prefix }}2.example.com'
+      cache_behaviors: '{{ cloudfront_test_cache_behaviors|reverse|list }}'
+      purge_cache_behaviors: true
+      state: present
+  - name: check that reversing cache behaviors changes nothing when purge_cache_behaviors
+      unset
+    assert:
+      that:
+      - reverse_cache_behaviors_with_purge.changed
+      - reverse_cache_behaviors_with_purge.cache_behaviors|length == 2
+  - name: update origin that changes target id (failure expected)
+    register: remove_origin_in_use
+    ignore_errors: true
+    ansible.amazon.cloudfront_distribution:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      alias: '{{ cloudfront_alias }}'
+      origins:
+      - domain_name: '{{ resource_prefix }}3.example.com'
+        id: '{{ resource_prefix }}3.example.com'
+      purge_origins: true
+      state: present
+  - name: check that removing in use origin fails
+    assert:
+      that:
+      - remove_origin_in_use.failed
+  - name: create an s3 bucket for next test
+    ansible.amazon.aws_s3:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      bucket: '{{ resource_prefix }}-bucket'
+      mode: create
+  - name: update origin to point to the s3 bucket
+    register: update_origin_to_s3
+    ansible.amazon.cloudfront_distribution:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      alias: '{{ cloudfront_alias }}'
+      origins:
+      - domain_name: '{{ resource_prefix }}-bucket.s3.amazonaws.com'
+        id: '{{ resource_prefix }}3.example.com'
+        s3_origin_access_identity_enabled: true
+      state: present
+  - name: check that s3 origin access is in result
+    assert:
+      that:
+      - item.s3_origin_config.origin_access_identity.startswith('origin-access-identity/cloudfront/')
+    when: '''s3_origin_config'' in item'
+    loop: '{{ update_origin_to_s3.origins[''items''] }}'
+  - name: update origin to remove s3 origin access identity
+    register: update_origin_to_s3_without_origin_access
+    ansible.amazon.cloudfront_distribution:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      alias: '{{ cloudfront_alias }}'
+      origins:
+      - domain_name: '{{ resource_prefix }}-bucket.s3.amazonaws.com'
+        id: '{{ resource_prefix }}3.example.com'
+        s3_origin_access_identity_enabled: false
+      state: present
+  - name: check that s3 origin access is not in result
+    assert:
+      that:
+      - not item.s3_origin_config.origin_access_identity
+    when: '''s3_origin_config'' in item'
+    loop: '{{ update_origin_to_s3_without_origin_access.origins[''items''] }}'
+  - name: delete the s3 bucket
+    ansible.amazon.aws_s3:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      bucket: '{{ resource_prefix }}-bucket'
+      mode: delete
+  - name: check that custom_origin_config can't be used with origin_access_identity
+      enabled
+    register: update_origin_to_s3_with_origin_access_and_with_custom_origin_config
+    ignore_errors: true
+    ansible.amazon.cloudfront_distribution:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      alias: '{{ cloudfront_alias }}'
+      origins:
+      - domain_name: '{{ resource_prefix }}-bucket.s3.amazonaws.com'
+        id: '{{ resource_prefix }}3.example.com'
+        s3_origin_access_identity_enabled: true
+        custom_origin_config:
+          origin_protocol_policy: http-only
+      state: present
+  - name: check that custom origin with origin access identity fails
+    assert:
+      that:
+      - update_origin_to_s3_with_origin_access_and_with_custom_origin_config.failed
+  always:
+  - name: clean up cloudfront distribution
+    ansible.amazon.cloudfront_distribution:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      alias: '{{ cloudfront_alias }}'
+      enabled: false
+      wait: true
+      state: absent

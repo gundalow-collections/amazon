@@ -1,0 +1,115 @@
+- block:
+  - name: set up aws connection info
+    set_fact:
+      aws_connection_info:
+        aws_access_key: '{{ aws_access_key }}'
+        aws_secret_key: '{{ aws_secret_key }}'
+        security_token: '{{ security_token }}'
+        region: '{{ aws_region }}'
+    no_log: true
+  - name: create ecs cluster
+    ansible.amazon.ecs_cluster:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ resource_prefix }}'
+      state: present
+  - name: create ecs_taskdefinition
+    register: ecs_taskdefinition_creation
+    ansible.amazon.ecs_taskdefinition:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      containers:
+      - name: my_container
+        image: ubuntu
+        memory: 128
+      family: '{{ resource_prefix }}'
+      state: present
+  - name: create ecs_service
+    register: ecs_service_creation
+    ansible.amazon.ecs_service:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ resource_prefix }}'
+      cluster: '{{ resource_prefix }}'
+      task_definition: '{{ resource_prefix }}'
+      desired_count: 1
+      state: present
+  - name: ecs_service works fine even when older botocore is used
+    assert:
+      that:
+      - ecs_service_creation.changed
+  - name: create ecs_service using force_new_deployment
+    register: ecs_service_creation_force_new_deploy
+    ignore_errors: true
+    ansible.amazon.ecs_service:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ resource_prefix }}'
+      cluster: '{{ resource_prefix }}'
+      task_definition: '{{ resource_prefix }}'
+      desired_count: 1
+      force_new_deployment: true
+      state: present
+  - name: check that module returns success
+    assert:
+      that:
+      - ecs_service_creation_force_new_deploy.changed
+  always:
+  - name: scale down ecs service
+    ignore_errors: true
+    ansible.amazon.ecs_service:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ resource_prefix }}'
+      cluster: '{{ resource_prefix }}'
+      task_definition: '{{ resource_prefix }}'
+      desired_count: 0
+      state: present
+  - name: pause to wait for scale down
+    pause:
+      seconds: 30
+  - name: remove ecs service
+    ignore_errors: true
+    ansible.amazon.ecs_service:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ resource_prefix }}'
+      cluster: '{{ resource_prefix }}'
+      task_definition: '{{ resource_prefix }}'
+      desired_count: 1
+      state: absent
+  - name: remove ecs task definition
+    ignore_errors: true
+    ansible.amazon.ecs_taskdefinition:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      containers:
+      - name: my_container
+        image: ubuntu
+        memory: 128
+      family: '{{ resource_prefix }}'
+      revision: '{{ ecs_taskdefinition_creation.taskdefinition.revision }}'
+      state: absent
+  - name: remove ecs cluster
+    ignore_errors: true
+    ansible.amazon.ecs_cluster:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ resource_prefix }}'
+      state: absent

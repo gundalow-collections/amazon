@@ -1,0 +1,82 @@
+- block:
+  - name: set up aws connection info
+    set_fact:
+      group_tmp_name: '{{ec2_group_name}}-numbered-protos'
+      aws_connection_info:
+        aws_access_key: '{{ aws_access_key }}'
+        aws_secret_key: '{{ aws_secret_key }}'
+        security_token: '{{ security_token }}'
+        region: '{{ aws_region }}'
+    no_log: true
+  - name: Create a group with numbered protocol (GRE)
+    register: result
+    ansible.amazon.ec2_group:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ group_tmp_name }}'
+      vpc_id: '{{ vpc_result.vpc.id }}'
+      description: '{{ ec2_group_description }}'
+      rules:
+      - proto: 47
+        to_port: -1
+        from_port: -1
+        cidr_ip: 0.0.0.0/0
+      state: present
+  - name: Create a group with a quoted proto
+    register: result
+    ansible.amazon.ec2_group:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ group_tmp_name }}'
+      vpc_id: '{{ vpc_result.vpc.id }}'
+      description: '{{ ec2_group_description }}'
+      rules:
+      - proto: '47'
+        to_port: -1
+        from_port: -1
+        cidr_ip: 0.0.0.0/0
+      state: present
+  - assert:
+      that:
+      - result is not changed
+  - name: Add a tag with a numeric value
+    ansible.amazon.ec2_group:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ group_tmp_name }}'
+      vpc_id: '{{ vpc_result.vpc.id }}'
+      description: '{{ ec2_group_description }}'
+      tags:
+        foo: 1
+  - name: Read a tag with a numeric value
+    register: result
+    ansible.amazon.ec2_group:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{ group_tmp_name }}'
+      vpc_id: '{{ vpc_result.vpc.id }}'
+      description: '{{ ec2_group_description }}'
+      tags:
+        foo: 1
+  - assert:
+      that:
+      - result is not changed
+  always:
+  - name: tidy up egress rule test security group
+    ignore_errors: true
+    ansible.amazon.ec2_group:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+      name: '{{group_tmp_name}}'
+      state: absent
+      vpc_id: '{{ vpc_result.vpc.id }}'

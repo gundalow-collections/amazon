@@ -1,0 +1,68 @@
+- name: set connection information for all tasks
+  set_fact:
+    aws_connection_info:
+      aws_access_key: '{{ aws_access_key }}'
+      aws_secret_key: '{{ aws_secret_key }}'
+      security_token: '{{ security_token }}'
+      region: '{{ aws_region }}'
+  no_log: true
+- name: New instance and don't wait for it to complete
+  register: in_test_vpc
+  ansible.amazon.ec2_instance:
+    aws_access_key: '{{ aws_access_key }}'
+    aws_secret_key: '{{ aws_secret_key }}'
+    security_token: '{{ security_token }}'
+    region: '{{ aws_region }}'
+    name: '{{ resource_prefix }}-test-no-wait'
+    image_id: '{{ ec2_ami_image[aws_region] }}'
+    vpc_subnet_id: '{{ testing_subnet_b.subnet.id }}'
+    tags:
+      TestId: '{{ resource_prefix }}'
+    wait: false
+    instance_type: t2.micro
+- assert:
+    that:
+    - in_test_vpc is not failed
+    - in_test_vpc is changed
+    - in_test_vpc.instances is not defined
+    - in_test_vpc.instance_ids is defined
+    - in_test_vpc.instance_ids | length > 0
+- name: New instance and don't wait for it to complete ( check mode )
+  check_mode: true
+  ansible.amazon.ec2_instance:
+    aws_access_key: '{{ aws_access_key }}'
+    aws_secret_key: '{{ aws_secret_key }}'
+    security_token: '{{ security_token }}'
+    region: '{{ aws_region }}'
+    name: '{{ resource_prefix }}-test-no-wait-checkmode'
+    image_id: '{{ ec2_ami_image[aws_region] }}'
+    vpc_subnet_id: '{{ testing_subnet_b.subnet.id }}'
+    tags:
+      TestId: '{{ resource_prefix }}'
+    wait: false
+    instance_type: t2.micro
+- name: Facts for ec2 test instance
+  register: real_instance_fact
+  until: real_instance_fact.instances | length > 0
+  retries: 10
+  ansible.amazon.ec2_instance_info:
+    aws_access_key: '{{ aws_access_key }}'
+    aws_secret_key: '{{ aws_secret_key }}'
+    security_token: '{{ security_token }}'
+    region: '{{ aws_region }}'
+    filters:
+      tag:Name: '{{ resource_prefix }}-test-no-wait'
+- name: Facts for checkmode ec2 test instance
+  register: checkmode_instance_fact
+  ansible.amazon.ec2_instance_info:
+    aws_access_key: '{{ aws_access_key }}'
+    aws_secret_key: '{{ aws_secret_key }}'
+    security_token: '{{ security_token }}'
+    region: '{{ aws_region }}'
+    filters:
+      tag:Name: '{{ resource_prefix }}-test-no-wait-checkmode'
+- name: Confirm whether the check mode is working normally.
+  assert:
+    that:
+    - '{{ real_instance_fact.instances | length }} > 0'
+    - '{{ checkmode_instance_fact.instances | length }} == 0'

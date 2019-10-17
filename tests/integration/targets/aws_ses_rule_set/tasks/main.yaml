@@ -1,0 +1,15 @@
+- include_tasks: inactive-rule-set-tests.yaml
+- name: Active Rule Set Tests
+  block:
+  - name: Obtain Lock
+    include_tasks: obtain-lock-wrapper.yaml
+    loop: '{{ range(0, max_obtain_lock_attempts, 1)|list }}'
+    loop_control:
+      loop_var: obtain_lock_attempt
+  - name: Check Obtained Lock
+    assert:
+      msg: Could not obtain lock after {{ max_obtain_lock_attempts }} attempts.
+      that: won_lock|bool
+  - include_tasks: active-rule-set-tests.yaml
+  always:
+  - include_tasks: cleanup-lock.yaml
