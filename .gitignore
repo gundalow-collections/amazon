@@ -1,6 +1,11 @@
+# repo specific
+ansible-amazon-*.tar.gz
+ah/plugins
+ah/ansible-amazon-*.tar.gz
 
 # Created by https://www.gitignore.io/api/git,linux,pydev,python,windows,pycharm+all,jupyternotebook,vim,webstorm,emacs,dotenv
 # Edit at https://www.gitignore.io/?templates=git,linux,pydev,python,windows,pycharm+all,jupyternotebook,vim,webstorm,emacs,dotenv
+
 
 ### dotenv ###
 .env
